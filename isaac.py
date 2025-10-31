@@ -1,8 +1,8 @@
 import pygame
 import random
 import math
-import os
 import json
+import os
 
 # === Initialisation ===
 pygame.init()
@@ -13,11 +13,15 @@ small_font = pygame.font.SysFont(None, 32)
 title_font = pygame.font.SysFont(None, 96)
 fword_font = pygame.font.SysFont(None, 180)
 
+windowed_size = (1366, 769)
+is_fullscreen = False
+
 # === Constantes ===
 SCREEN_WIDTH, SCREEN_HEIGHT = screen.get_size()
 GROUND_Y = 680
 GROUND_START_X = 0
 GROUND_END_X = 3000
+
 GRAVITY = 800
 JUMP_FORCE = -600
 MOVE_SPEED = 300
@@ -25,6 +29,15 @@ PROJECTILE_SPEED = 800
 FPS = 60
 MAX_MONSTERS = 3
 MONSTER_SPAWN_COOLDOWN = 2.0  # Secondes entre chaque spawn
+
+def toggle_fullscreen():
+    global screen, SCREEN_WIDTH, SCREEN_HEIGHT, is_fullscreen
+    is_fullscreen = not is_fullscreen
+    if is_fullscreen:
+        screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+    else:
+        screen = pygame.display.set_mode(windowed_size)
+    SCREEN_WIDTH, SCREEN_HEIGHT = screen.get_size()
 DEATH_BELOW_Y = GROUND_Y + 1500
 
 # === Caméra ===
@@ -200,73 +213,74 @@ def spawn_monster():
 
 monsters = [spawn_monster() for _ in range(MAX_MONSTERS)]
 
-# === Plateformes ===
-platforms = [
-    pygame.Rect(100, 560, 200, 20),
-    pygame.Rect(380, 480, 180, 20),
-    pygame.Rect(620, 420, 160, 20),
-    pygame.Rect(860, 360, 140, 20),
-    pygame.Rect(1060, 300, 180, 20),
-    pygame.Rect(1300, 200, 250, 20),
-    pygame.Rect(1600, 600, 100, 20),
-    pygame.Rect(1750, 500, 100, 20),
-    pygame.Rect(1600, 400, 100, 20),
-    pygame.Rect(1750, 300, 100, 20),
-    pygame.Rect(1600, 200, 100, 20),
-    pygame.Rect(1750, 100, 100, 20),
-    pygame.Rect(1900, 60, 500, 20),
-]
+# === Multi-niveaux: chargement levels.json et application d'un niveau ===
+def _default_level():
+    return {
+        "name": "Niveau 1",
+        "ground": {"y": 680, "start_x": 0, "end_x": 3000},
+        "spawn": {"x": SCREEN_WIDTH / 2, "y": 680 - (head_radius + body_height + leg_height)},
+        "goal": {"x": 2300, "y": -30, "w": 70, "h": 110},
+        "platforms": [
+            {"x": 100, "y": 560, "w": 200, "h": 20},
+            {"x": 380, "y": 480, "w": 180, "h": 20},
+            {"x": 620, "y": 420, "w": 160, "h": 20},
+            {"x": 860, "y": 360, "w": 140, "h": 20},
+            {"x": 1060, "y": 300, "w": 180, "h": 20},
+            {"x": 1300, "y": 200, "w": 250, "h": 20},
+            {"x": 1600, "y": 600, "w": 100, "h": 20},
+            {"x": 1750, "y": 500, "w": 100, "h": 20},
+            {"x": 1600, "y": 400, "w": 100, "h": 20},
+            {"x": 1750, "y": 300, "w": 100, "h": 20},
+            {"x": 1600, "y": 200, "w": 100, "h": 20},
+            {"x": 1750, "y": 100, "w": 100, "h": 20},
+            {"x": 1900, "y": 60, "w": 500, "h": 20},
+        ],
+    }
 
-goal_rect = pygame.Rect(2300, -30, 70, 110)
-spawn_point = pygame.Vector2(SCREEN_WIDTH / 2, GROUND_Y - (head_radius + body_height + leg_height))
-spikes = []
+levels = []
+levels_path = os.path.join(os.path.dirname(__file__), "levels.json")
+try:
+    if os.path.isfile(levels_path):
+        with open(levels_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, dict) and isinstance(data.get("levels"), list) and data["levels"]:
+                levels = data["levels"]
+except Exception:
+    levels = []
 
-def try_load_editor_level():
-    """Charge un niveau depuis editor_level.py ou editor_level.json si présents."""
-    base_dir = os.path.dirname(__file__)
-    py_path = os.path.join(base_dir, 'editor_level.py')
-    json_path = os.path.join(base_dir, 'editor_level.json')
-    loaded = False
-    global platforms, spawn_point, goal_rect, spikes
-    try:
-        if os.path.exists(py_path):
-            # Exécuter le fichier Python pour récupérer les variables
-            ns = {"pygame": pygame, "pygame__Rect": pygame.Rect, "pygame__Vector2": pygame.Vector2}
-            with open(py_path, 'r', encoding='utf-8') as f:
-                code = f.read()
-            exec(code, {"pygame": pygame}, ns)
-            if 'platforms' in ns: platforms = ns['platforms']
-            if 'spawn_point' in ns: spawn_point = ns['spawn_point']
-            if 'goal_rect' in ns: goal_rect = ns['goal_rect']
-            spikes = ns.get('spikes', [])
-            loaded = True
-        elif os.path.exists(json_path):
-            with open(json_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            # data expected fields: platforms[], player{}, goal{}, spikes[]
-            plats = []
-            for p in data.get('platforms', []):
-                plats.append(pygame.Rect(int(p['x']), int(p['y']), int(p['width']), int(p['height'])))
-            if plats:
-                platforms = plats
-            pl = data.get('player')
-            if pl:
-                spawn_point = pygame.Vector2(int(pl['x']), int(pl['y']))
-            go = data.get('goal')
-            if go:
-                goal_rect = pygame.Rect(int(go['x']), int(go['y']), int(go['width']), int(go['height']))
-            spikes = []
-            for s in data.get('spikes', []):
-                spikes.append(pygame.Rect(int(s['x']), int(s['y']), int(s['width']), int(s['height'])))
-            loaded = True
-    except Exception as e:
-        # En cas d'erreur, garder le niveau par défaut
-        print('Erreur chargement niveau éditeur:', e)
-        loaded = False
-    return loaded
+if not levels:
+    levels = [_default_level()]
 
+selected_level_idx = 0
+
+platforms = []
+goal_rect = pygame.Rect(0, 0, 0, 0)
+spawn_point = pygame.Vector2(0, 0)
+
+def apply_level(level):
+    global GROUND_Y, GROUND_START_X, GROUND_END_X, platforms, goal_rect, spawn_point
+    # Sol
+    GROUND_Y = int(level.get("ground", {}).get("y", GROUND_Y))
+    GROUND_START_X = int(level.get("ground", {}).get("start_x", GROUND_START_X))
+    GROUND_END_X = int(level.get("ground", {}).get("end_x", GROUND_END_X))
+    # Plateformes
+    platforms = [
+        pygame.Rect(int(p.get("x", 0)), int(p.get("y", 0)), int(p.get("w", 0)), int(p.get("h", 0)))
+        for p in level.get("platforms", [])
+    ]
+    # Porte/objectif
+    g = level.get("goal", {})
+    goal_rect.x = int(g.get("x", 2300))
+    goal_rect.y = int(g.get("y", -30))
+    goal_rect.w = int(g.get("w", 70))
+    goal_rect.h = int(g.get("h", 110))
+    # Spawn
+    s = level.get("spawn", {})
+    spawn_point.update(float(s.get("x", SCREEN_WIDTH / 2)), float(s.get("y", GROUND_Y - (head_radius + body_height + leg_height))))
+
+# Appliquer le niveau initial
+apply_level(levels[selected_level_idx])
 init_clouds()
-try_load_editor_level()
 
 # === Score, Vies, Victoire ===
 score = 0
@@ -296,6 +310,11 @@ while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
+        # Toggle plein écran (F11 ou Alt+Entrée)
+        elif event.type == pygame.KEYDOWN and (
+            event.key == pygame.K_F11 or (event.key in (pygame.K_RETURN, pygame.K_KP_ENTER) and (event.mod & pygame.KMOD_ALT))
+        ):
+            toggle_fullscreen()
         elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
             if game_state == "MENU":
                 running = False
@@ -317,6 +336,8 @@ while running:
                     invuln_timer = 0.0
                     is_invulnerable = False
                     victory = False
+                    # Appliquer le niveau sélectionné au démarrage
+                    apply_level(levels[selected_level_idx])
                     player_pos = spawn_point.copy()
                     player_vel_y = 0
                     camera_offset = pygame.Vector2(0, 0)
@@ -370,6 +391,8 @@ while running:
                 invuln_timer = 0.0
                 is_invulnerable = False
                 victory = False
+                # Appliquer le niveau sélectionné au démarrage
+                apply_level(levels[selected_level_idx])
                 player_pos = spawn_point.copy()
                 player_vel_y = 0
                 camera_offset = pygame.Vector2(0, 0)
@@ -378,6 +401,14 @@ while running:
                 particles = []
                 monster_spawn_timer = 0.0
                 game_state = "PLAYING"
+            elif game_state == "MENU" and event.key in (pygame.K_LEFT, pygame.K_RIGHT):
+                # Changer de niveau sélectionné dans le menu
+                if event.key == pygame.K_LEFT:
+                    selected_level_idx = (selected_level_idx - 1) % len(levels)
+                else:
+                    selected_level_idx = (selected_level_idx + 1) % len(levels)
+                # Pré-appliquer pour que spawn/sol soient prêts au lancement
+                apply_level(levels[selected_level_idx])
 
     # --- MENU PRINCIPAL ---
     if game_state == "MENU":
@@ -399,6 +430,11 @@ while running:
             pygame.draw.rect(screen, (200, 200, 200), rect, 3, border_radius=10)
             txt = font.render(text, True, (255, 255, 255))
             screen.blit(txt, (rect.centerx - txt.get_width()//2, rect.centery - txt.get_height()//2))
+
+        # Afficher le niveau sélectionné
+        level_name = levels[selected_level_idx].get("name", f"Niveau {selected_level_idx+1}")
+        level_txt = small_font.render(f"Niveau: {level_name}", True, (255, 255, 255))
+        screen.blit(level_txt, (SCREEN_WIDTH//2 - level_txt.get_width()//2, SCREEN_HEIGHT//2 - 60))
 
         draw_button(play_rect, "Jouer")
         draw_button(quit_rect, "Quitter")
@@ -610,17 +646,6 @@ while running:
                 create_particles(player_pos, (255, 255, 100), 15)
                 break
 
-        # Collision avec les pièges du niveau éditeur
-        for sp in spikes:
-            if player_rect.colliderect(sp):
-                lives -= 1
-                is_invulnerable = True
-                invuln_timer = invuln_time
-                player_pos = spawn_point.copy()
-                player_vel_y = 0
-                create_particles(player_pos, (255, 80, 80), 15)
-                break
-
     if is_invulnerable:
         invuln_timer -= dt
         if invuln_timer <= 0:
@@ -678,13 +703,6 @@ while running:
     knob_pos = (goal_rect_screen.right - 12, goal_rect_screen.centery)
     pygame.draw.circle(screen, (30, 30, 30), knob_pos, 6)
     pygame.draw.circle(screen, (80, 80, 80), knob_pos, 3)
-
-    # Pièges (spikes) du niveau éditeur
-    if spikes:
-        for sp in spikes:
-            sp_screen = sp.move(-camera_offset.x, -camera_offset.y)
-            pygame.draw.rect(screen, (200, 60, 20), sp_screen)
-            pygame.draw.rect(screen, (0, 0, 0), sp_screen, 2)
 
     # Ombres
     player_feet = player_pos.y + head_radius + body_height + leg_height
