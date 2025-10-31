@@ -29,6 +29,10 @@ PROJECTILE_SPEED = 800
 FPS = 60
 MAX_MONSTERS = 3
 MONSTER_SPAWN_COOLDOWN = 2.0  # Secondes entre chaque spawn
+DASH_SPEED = 1200
+DASH_DURATION = 0.15
+DASH_COOLDOWN = 0.6
+DEATH_BELOW_Y = GROUND_Y + 1500
 
 def toggle_fullscreen():
     global screen, SCREEN_WIDTH, SCREEN_HEIGHT, is_fullscreen
@@ -38,7 +42,7 @@ def toggle_fullscreen():
     else:
         screen = pygame.display.set_mode(windowed_size)
     SCREEN_WIDTH, SCREEN_HEIGHT = screen.get_size()
-DEATH_BELOW_Y = GROUND_Y + 1500
+
 
 # === Caméra ===
 camera_offset = pygame.Vector2(0, 0)
@@ -160,6 +164,12 @@ blink_timer = 0.0
 blink_close = 0.0
 prev_on_ground = True
 shoot_recoil = 0.0
+
+# Dash
+is_dashing = False
+dash_timer = 0.0
+dash_cooldown_timer = 0.0
+dash_dir = 1
 
 player_pos.y = GROUND_Y - (head_radius + body_height + leg_height)
 spawn_point = player_pos.copy()
@@ -324,6 +334,22 @@ while running:
             elif game_state == "PAUSED":
                 # Reprendre
                 game_state = "PLAYING"
+        elif event.type == pygame.KEYDOWN and event.key in (pygame.K_LSHIFT, pygame.K_RSHIFT):
+            if game_state == "PLAYING" and dash_cooldown_timer <= 0 and not is_dashing:
+                # Déterminer la direction du dash selon les entrées ou la direction actuelle
+                keys_now = pygame.key.get_pressed()
+                if keys_now[pygame.K_q] or keys_now[pygame.K_LEFT]:
+                    dash_dir = -1
+                elif keys_now[pygame.K_d] or keys_now[pygame.K_RIGHT]:
+                    dash_dir = 1
+                else:
+                    dash_dir = direction
+                is_dashing = True
+                dash_timer = DASH_DURATION
+                dash_cooldown_timer = DASH_COOLDOWN
+                # Courte invulnérabilité pendant le dash
+                is_invulnerable = True
+                invuln_timer = max(invuln_timer, DASH_DURATION)
         elif event.type == pygame.KEYDOWN and event.key == pygame.K_o:
             # Easter egg: gros texte à l'écran
             fword_timer = 1.5
@@ -516,6 +542,13 @@ while running:
     player_vel_y += GRAVITY * dt
     player_pos.y += player_vel_y * dt
 
+    # Dash movement (horizontal boost while dashing)
+    if is_dashing:
+        player_pos.x += dash_dir * DASH_SPEED * dt
+        dash_timer -= dt
+        if dash_timer <= 0:
+            is_dashing = False
+
     feet_y = player_pos.y + head_radius + body_height + leg_height
     if feet_y > GROUND_Y and GROUND_START_X <= player_pos.x <= GROUND_END_X:
         player_pos.y = GROUND_Y - (head_radius + body_height + leg_height)
@@ -548,6 +581,8 @@ while running:
         blink_close -= dt
     if shoot_recoil > 0:
         shoot_recoil -= dt
+    if dash_cooldown_timer > 0:
+        dash_cooldown_timer -= dt
 
     if player_pos.y > DEATH_BELOW_Y:
         lives -= 1
