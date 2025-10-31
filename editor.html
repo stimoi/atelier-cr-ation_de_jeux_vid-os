@@ -148,7 +148,7 @@
         { x: 1900, y: 60,  w: 500, h: 20 }
       ],
       enemies: [
-        { x: 500, y: 640, w: 28, h: 28 },
+        { x: 500, y: 640, w: 28, h: 28, type: 'basic' },
       ]
     };
 
@@ -229,23 +229,37 @@
         els.platformList.appendChild(row);
       });
 
-      // Enemies list
       els.enemyList.innerHTML = '';
       (lvl.enemies || (lvl.enemies = [])).forEach((en, idx) => {
         const row = document.createElement('div');
         row.className = 'platform';
+        row.style.gridTemplateColumns = 'repeat(4, 1fr) 1fr 32px';
         row.innerHTML = `
           <input type="number" value="${en.x}" />
           <input type="number" value="${en.y}" />
           <input type="number" value="${en.w}" />
           <input type="number" value="${en.h}" />
+          <select>
+            <option value="basic">basic</option>
+            <option value="patrol">patrol</option>
+            <option value="shooter">shooter</option>
+            <option value="flyer">flyer</option>
+          </select>
           <button data-idx="${idx}">Ã—</button>
         `;
-        const [x,y,w,h,btn] = row.querySelectorAll('input,button');
+        const inputs = row.querySelectorAll('input,select,button');
+        const x = inputs[0];
+        const y = inputs[1];
+        const w = inputs[2];
+        const h = inputs[3];
+        const typeSel = inputs[4];
+        const btn = inputs[5];
         x.oninput = () => { en.x = +x.value; draw(); };
         y.oninput = () => { en.y = +y.value; draw(); };
         w.oninput = () => { en.w = +w.value; draw(); };
         h.oninput = () => { en.h = +h.value; draw(); };
+        typeSel.value = en.type || 'basic';
+        typeSel.onchange = () => { en.type = typeSel.value; draw(); };
         btn.onclick = () => { lvl.enemies.splice(idx,1); renderForm(); draw(); };
         els.enemyList.appendChild(row);
       });
@@ -258,7 +272,7 @@
     };
 
     els.addEnemyBtn.onclick = () => {
-      (data.levels[current].enemies || (data.levels[current].enemies = [])).push({ x: 200, y: 640, w: 28, h: 28 });
+      (data.levels[current].enemies || (data.levels[current].enemies = [])).push({ x: 200, y: 640, w: 28, h: 28, type: 'basic' });
       renderForm();
       draw();
     };
