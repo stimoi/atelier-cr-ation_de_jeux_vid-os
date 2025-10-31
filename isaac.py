@@ -1,6 +1,8 @@
 import pygame
 import random
 import math
+import os
+import json
 
 # === Initialisation ===
 pygame.init()
@@ -217,7 +219,54 @@ platforms = [
 
 goal_rect = pygame.Rect(2300, -30, 70, 110)
 spawn_point = pygame.Vector2(SCREEN_WIDTH / 2, GROUND_Y - (head_radius + body_height + leg_height))
+spikes = []
+
+def try_load_editor_level():
+    """Charge un niveau depuis editor_level.py ou editor_level.json si présents."""
+    base_dir = os.path.dirname(__file__)
+    py_path = os.path.join(base_dir, 'editor_level.py')
+    json_path = os.path.join(base_dir, 'editor_level.json')
+    loaded = False
+    global platforms, spawn_point, goal_rect, spikes
+    try:
+        if os.path.exists(py_path):
+            # Exécuter le fichier Python pour récupérer les variables
+            ns = {"pygame": pygame, "pygame__Rect": pygame.Rect, "pygame__Vector2": pygame.Vector2}
+            with open(py_path, 'r', encoding='utf-8') as f:
+                code = f.read()
+            exec(code, {"pygame": pygame}, ns)
+            if 'platforms' in ns: platforms = ns['platforms']
+            if 'spawn_point' in ns: spawn_point = ns['spawn_point']
+            if 'goal_rect' in ns: goal_rect = ns['goal_rect']
+            spikes = ns.get('spikes', [])
+            loaded = True
+        elif os.path.exists(json_path):
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            # data expected fields: platforms[], player{}, goal{}, spikes[]
+            plats = []
+            for p in data.get('platforms', []):
+                plats.append(pygame.Rect(int(p['x']), int(p['y']), int(p['width']), int(p['height'])))
+            if plats:
+                platforms = plats
+            pl = data.get('player')
+            if pl:
+                spawn_point = pygame.Vector2(int(pl['x']), int(pl['y']))
+            go = data.get('goal')
+            if go:
+                goal_rect = pygame.Rect(int(go['x']), int(go['y']), int(go['width']), int(go['height']))
+            spikes = []
+            for s in data.get('spikes', []):
+                spikes.append(pygame.Rect(int(s['x']), int(s['y']), int(s['width']), int(s['height'])))
+            loaded = True
+    except Exception as e:
+        # En cas d'erreur, garder le niveau par défaut
+        print('Erreur chargement niveau éditeur:', e)
+        loaded = False
+    return loaded
+
 init_clouds()
+try_load_editor_level()
 
 # === Score, Vies, Victoire ===
 score = 0
@@ -561,6 +610,17 @@ while running:
                 create_particles(player_pos, (255, 255, 100), 15)
                 break
 
+        # Collision avec les pièges du niveau éditeur
+        for sp in spikes:
+            if player_rect.colliderect(sp):
+                lives -= 1
+                is_invulnerable = True
+                invuln_timer = invuln_time
+                player_pos = spawn_point.copy()
+                player_vel_y = 0
+                create_particles(player_pos, (255, 80, 80), 15)
+                break
+
     if is_invulnerable:
         invuln_timer -= dt
         if invuln_timer <= 0:
@@ -618,6 +678,13 @@ while running:
     knob_pos = (goal_rect_screen.right - 12, goal_rect_screen.centery)
     pygame.draw.circle(screen, (30, 30, 30), knob_pos, 6)
     pygame.draw.circle(screen, (80, 80, 80), knob_pos, 3)
+
+    # Pièges (spikes) du niveau éditeur
+    if spikes:
+        for sp in spikes:
+            sp_screen = sp.move(-camera_offset.x, -camera_offset.y)
+            pygame.draw.rect(screen, (200, 60, 20), sp_screen)
+            pygame.draw.rect(screen, (0, 0, 0), sp_screen, 2)
 
     # Ombres
     player_feet = player_pos.y + head_radius + body_height + leg_height
