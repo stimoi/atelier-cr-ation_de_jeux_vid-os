@@ -146,8 +146,17 @@
 
   <div class="canvas-wrap">
     <div class="toolbar">
-      <small class="mono">AperÃ§u. DÃ©filement horizontal: molette Shift.</small>
+      <small class="mono">Aperçu. Défilement horizontal: molette + Shift.</small>
       <small class="mono">Zoom: Ctrl + molette.</small>
+      <small class="mono" id="mouseInfo"></small>
+      <label class="mono" style="display:flex;align-items:center;gap:6px;margin-left:8px;">
+        <input type="checkbox" id="snapToggle" checked>
+        Snap
+      </label>
+      <label class="mono" style="display:flex;align-items:center;gap:6px;">
+        Pas
+        <input type="number" id="snapStep" value="10" min="1" style="width:64px;">
+      </label>
     </div>
     <canvas id="view"></canvas>
   </div>
@@ -358,6 +367,7 @@
     const ctx = els.view.getContext('2d');
     let zoom = 1;
     let scrollX = 0, scrollY = 0;
+    let dragging = null; // { type: 'platform'|'goal'|'spawn'|'pan', idx?: number, dx, dy }
 
     function resize() {
       const dpr = Math.max(1, window.devicePixelRatio || 1);
@@ -381,14 +391,103 @@
       }
     }, { passive: false });
 
-    els.view.addEventListener('click', (e) => {
+    function worldFromClient(e) {
       const rect = els.view.getBoundingClientRect();
       const x = (e.clientX - rect.left) * (els.view.width / rect.width);
       const y = (e.clientY - rect.top) * (els.view.height / rect.height);
       const px = (x - scrollX) / zoom;
       const py = (y - scrollY) / zoom;
+      return { px, py };
+    }
+
+    function doSnap(v) {
+      const stepEl = document.getElementById('snapStep');
+      const toggleEl = document.getElementById('snapToggle');
+      const step = Math.max(1, +(stepEl?.value || 10));
+      const use = !!(toggleEl?.checked);
+      return use ? Math.round(v / step) * step : v;
+    }
+
+    function hitTest(lvl, x, y) {
+      // Test plateformes en priorité (haut->bas)
+      for (let i = lvl.platforms.length - 1; i >= 0; i--) {
+        const p = lvl.platforms[i];
+        if (x >= p.x && x <= p.x + p.w && y >= p.y && y <= p.y + p.h) {
+          return { type: 'platform', idx: i };
+        }
+      }
+      // Porte
+      const g = lvl.goal;
+      if (x >= g.x && x <= g.x + g.w && y >= g.y && y <= g.y + g.h) return { type: 'goal' };
+      // Spawn (cercle rayon ~12)
+      const dx = x - lvl.spawn.x, dy = y - lvl.spawn.y;
+      if (dx*dx + dy*dy <= 12*12) return { type: 'spawn' };
+      return null;
+    }
+
+    els.view.addEventListener('mousedown', (e) => {
+      const btn = e.button; // 0: gauche, 1: milieu, 2: droit
       const lvl = data.levels[current];
-      lvl.platforms.push({ x: Math.round(px), y: Math.round(py), w: 100, h: 20 });
+      const { px, py } = worldFromClient(e);
+      if (btn === 1) {
+        dragging = { type: 'pan', dx: e.clientX, dy: e.clientY };
+        return;
+      }
+      if (btn === 2) {
+        // clic droit: delete plateforme sous la souris
+        const hit = hitTest(lvl, px, py);
+        if (hit?.type === 'platform') {
+          lvl.platforms.splice(hit.idx, 1);
+          renderForm();
+          draw();
+        }
+        return;
+      }
+      // gauche: drag objet ou ajout si vide
+      const hit = hitTest(lvl, px, py);
+      if (hit) {
+        if (hit.type === 'platform') {
+          const p = lvl.platforms[hit.idx];
+          dragging = { type: 'platform', idx: hit.idx, dx: px - p.x, dy: py - p.y };
+        } else if (hit.type === 'goal') {
+          dragging = { type: 'goal', dx: px - lvl.goal.x, dy: py - lvl.goal.y };
+        } else if (hit.type === 'spawn') {
+          dragging = { type: 'spawn', dx: px - lvl.spawn.x, dy: py - lvl.spawn.y };
+        }
+      } else {
+        // ajout rapide si vide
+        const nx = doSnap(Math.round(px));
+        const ny = doSnap(Math.round(py));
+        lvl.platforms.push({ x: nx, y: ny, w: 100, h: 20 });
+        renderForm();
+        draw();
+      }
+    });
+
+    window.addEventListener('mouseup', () => { dragging = null; });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!dragging) return;
+      const lvl = data.levels[current];
+      if (dragging.type === 'pan') {
+        scrollX += (e.clientX - dragging.dx);
+        scrollY += (e.clientY - dragging.dy);
+        dragging.dx = e.clientX; dragging.dy = e.clientY;
+        draw();
+        return;
+      }
+      const { px, py } = worldFromClient(e);
+      if (dragging.type === 'platform') {
+        const p = lvl.platforms[dragging.idx];
+        p.x = doSnap(px - dragging.dx);
+        p.y = doSnap(py - dragging.dy);
+      } else if (dragging.type === 'goal') {
+        lvl.goal.x = doSnap(px - dragging.dx);
+        lvl.goal.y = doSnap(py - dragging.dy);
+      } else if (dragging.type === 'spawn') {
+        lvl.spawn.x = doSnap(px - dragging.dx);
+        lvl.spawn.y = doSnap(py - dragging.dy);
+      }
       renderForm();
       draw();
     });
@@ -405,18 +504,26 @@
       ctx.fillStyle = g;
       ctx.fillRect(-scrollX/zoom, -scrollY/zoom, w/zoom, h/zoom);
       const step = 50;
-      ctx.strokeStyle = '#d7eaff';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
+      // Lignes verticales (avec lignes majeures tous les 250px)
       for (let x = -scrollX/zoom % step; x < w/zoom; x += step) {
+        const major = Math.round((x + scrollX/zoom)) % 250 === 0;
+        ctx.strokeStyle = major ? '#b7d3ff' : '#d7eaff';
+        ctx.lineWidth = major ? 1.2 : 1;
+        ctx.beginPath();
         ctx.moveTo(x, 0);
         ctx.lineTo(x, h/zoom);
+        ctx.stroke();
       }
+      // Lignes horizontales (avec lignes majeures tous les 250px)
       for (let y = -scrollY/zoom % step; y < h/zoom; y += step) {
+        const major = Math.round((y + scrollY/zoom)) % 250 === 0;
+        ctx.strokeStyle = major ? '#b7d3ff' : '#d7eaff';
+        ctx.lineWidth = major ? 1.2 : 1;
+        ctx.beginPath();
         ctx.moveTo(0, y);
         ctx.lineTo(w/zoom, y);
+        ctx.stroke();
       }
-      ctx.stroke();
       ctx.restore();
     }
 
@@ -447,15 +554,27 @@
       // Enemies
       if (lvl.enemies && lvl.enemies.length) {
         lvl.enemies.forEach(en => {
-          ctx.fillStyle = '#dc2626';
-          ctx.strokeStyle = '#7f1d1d';
+          const t = en.type || 'basic';
+          const colors = {
+            basic: ['#dc2626', '#7f1d1d'],
+            patrol: ['#f97316', '#7c2d12'],
+            shooter: ['#7c3aed', '#4c1d95'],
+            flyer: ['#2563eb', '#1e3a8a']
+          };
+          const [fillC, strokeC] = colors[t] || colors.basic;
+          ctx.fillStyle = fillC;
+          ctx.strokeStyle = strokeC;
           ctx.lineWidth = 2;
           ctx.fillRect(en.x, en.y, en.w, en.h);
           ctx.strokeRect(en.x, en.y, en.w, en.h);
-          // eyes
+          // yeux
           ctx.fillStyle = '#fff';
           ctx.fillRect(en.x + 6, en.y + 8, 4, 6);
           ctx.fillRect(en.x + en.w - 10, en.y + 8, 4, 6);
+          // label type
+          ctx.fillStyle = 'rgba(0,0,0,0.7)';
+          ctx.font = '12px ui-monospace, monospace';
+          ctx.fillText(t, en.x, en.y - 6);
         });
       }
 
@@ -465,6 +584,9 @@
       ctx.strokeStyle = '#8b6508';
       ctx.lineWidth = 2;
       ctx.strokeRect(lvl.goal.x, lvl.goal.y, lvl.goal.w, lvl.goal.h);
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.font = '12px ui-monospace, monospace';
+      ctx.fillText('Porte', lvl.goal.x, lvl.goal.y - 6);
 
       // Spawn
       ctx.fillStyle = '#1f6feb';
@@ -476,6 +598,9 @@
       ctx.beginPath();
       ctx.arc(lvl.spawn.x, lvl.spawn.y, 14, 0, Math.PI * 2);
       ctx.stroke();
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.font = '12px ui-monospace, monospace';
+      ctx.fillText('Spawn', lvl.spawn.x + 18, lvl.spawn.y + 4);
 
       ctx.restore();
     }
@@ -485,6 +610,18 @@
     renderForm();
     resize();
     draw();
+    // Mouse world coordinates display
+    els.view.addEventListener('mousemove', (e) => {
+      const rect = els.view.getBoundingClientRect();
+      const x = (e.clientX - rect.left) * (els.view.width / rect.width);
+      const y = (e.clientY - rect.top) * (els.view.height / rect.height);
+      let px = Math.round((x - scrollX) / zoom);
+      let py = Math.round((y - scrollY) / zoom);
+      px = doSnap(px); py = doSnap(py);
+      const z = Math.round(zoom * 100) / 100;
+      const el = document.getElementById('mouseInfo');
+      if (el) el.textContent = `| Souris: ${px}, ${py} | Zoom: ${z}x`;
+    });
   </script>
 </body>
 </html>
