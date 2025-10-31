@@ -1,222 +1,380 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Éditeur de Niveaux - Isaac</title>
-    <style>
-        * { box-sizing: border-box; }
-        body { margin: 0; font-family: system-ui, Segoe UI, Roboto, Arial; background: linear-gradient(135deg,#667eea,#764ba2); padding: 20px; }
-        .container { max-width: 1400px; margin: 0 auto; background: #fff; border-radius: 14px; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,.25); }
-        .header { padding: 24px; color: #fff; background: linear-gradient(135deg,#667eea,#764ba2); text-align: center; }
-        .header h1 { margin: 0 0 8px; }
-        .toolbar { padding: 16px; background: #f8f9fa; border-bottom: 3px solid #667eea; }
-        .tool-buttons { display: flex; gap: 10px; flex-wrap: wrap; }
-        .tool-btn { padding: 10px 14px; border-radius: 8px; border: 2px solid #ddd; background: #fff; cursor: pointer; }
-        .tool-btn.active { background: #667eea; border-color: #667eea; color: #fff; }
-        .canvas-container { background: #e9ecef; padding: 20px; }
-        #gameCanvas { display: block; margin: 0 auto; background: #87CEEB; border: 3px solid #333; box-shadow: 0 5px 20px rgba(0,0,0,.2); }
-        .controls { padding: 16px; background: #f8f9fa; border-top: 3px solid #667eea; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
-        .control-group { display: flex; align-items: center; gap: 8px; }
-        .control-group input { padding: 8px 10px; border: 2px solid #ddd; border-radius: 6px; }
-        .action-btn { padding: 12px 18px; border: 0; border-radius: 8px; color: #fff; cursor: pointer; background: linear-gradient(135deg,#667eea,#764ba2); box-shadow: 0 4px 12px rgba(102,126,234,.4); }
-        .action-btn.secondary { background: linear-gradient(135deg,#f093fb,#f5576c); }
-        .action-btn.neutral { background: #495057; }
-        .notification { position: fixed; top: 20px; right: 20px; background: #4caf50; color: #fff; padding: 12px 18px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,.25); }
-    </style>
-  </head>
-  <body>
-    <div class="container">
-      <div class="header">
-        <h1>🎮 Éditeur de Niveaux</h1>
-        <div>Créez vos niveaux et exportez-les pour le jeu</div>
-      </div>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ã‰diteur de niveaux</title>
+  <style>
+    body { font-family: system-ui, Arial, sans-serif; margin: 0; display: grid; grid-template-columns: 360px 1fr; height: 100vh; }
+    header { grid-column: 1 / -1; padding: 10px 16px; background: #222; color: #fff; display: flex; align-items: center; gap: 8px; }
+    header h1 { font-size: 18px; margin: 0; }
+    .sidebar { overflow: auto; border-right: 1px solid #ddd; padding: 12px; display: flex; flex-direction: column; gap: 16px; }
+    .section { border: 1px solid #ddd; border-radius: 8px; padding: 10px; }
+    .section h2 { margin: 0 0 8px 0; font-size: 16px; }
+    label { display: block; font-size: 12px; color: #333; margin-top: 8px; }
+    input[type="number"], input[type="text"] { width: 100%; box-sizing: border-box; padding: 6px 8px; margin-top: 4px; }
+    button { padding: 6px 10px; border-radius: 6px; border: 1px solid #ccc; background: #f7f7f7; cursor: pointer; }
+    button.primary { background: #2563eb; color: white; border-color: #2563eb; }
+    button.danger { background: #dc2626; color: white; border-color: #dc2626; }
+    .row { display: flex; gap: 8px; align-items: center; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .platforms { display: flex; flex-direction: column; gap: 8px; max-height: 240px; overflow: auto; }
+    .platform { display: grid; grid-template-columns: repeat(4, 1fr) 32px; gap: 6px; }
+    .canvas-wrap { position: relative; height: calc(100vh - 60px); background: #eef6ff; }
+    canvas { width: 100%; height: 100%; display: block; background: linear-gradient(#7db3e8, #cfe9ff); }
+    .toolbar { position: absolute; top: 12px; left: 12px; display: flex; gap: 8px; background: rgba(255,255,255,0.9); padding: 8px; border-radius: 8px; }
+    small.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #555; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Ã‰diteur de niveaux</h1>
+    <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
+      <input type="file" id="importFile" accept="application/json" />
+      <button class="primary" id="exportBtn">Exporter levels.json</button>
+    </div>
+  </header>
 
-      <div class="toolbar">
-        <div class="tool-buttons">
-          <button class="tool-btn active" data-tool="platform">🟫 Plateforme</button>
-          <button class="tool-btn" data-tool="player">👤 Joueur</button>
-          <button class="tool-btn" data-tool="spike">⚠️ Piège</button>
-          <button class="tool-btn" data-tool="goal">🎯 Arrivée</button>
-          <button class="tool-btn" data-tool="erase">🗑️ Effacer</button>
-        </div>
+  <div class="sidebar">
+    <div class="section">
+      <h2>Niveaux</h2>
+      <div class="row">
+        <select id="levelSelect" style="flex:1"></select>
+        <button id="addLevelBtn">Ajouter</button>
+        <button class="danger" id="deleteLevelBtn">Suppr</button>
       </div>
+      <label>Nom</label>
+      <input type="text" id="levelName" placeholder="Nom du niveau" />
+    </div>
 
-      <div class="canvas-container">
-        <canvas id="gameCanvas" width="800" height="600"></canvas>
-      </div>
-
-      <div class="controls">
-        <div class="control-group">
-          <label for="gridSize">Taille grille:</label>
-          <input id="gridSize" type="number" value="40" min="20" max="80" />
+    <div class="section">
+      <h2>Sol</h2>
+      <div class="grid-2">
+        <div>
+          <label>Y</label>
+          <input type="number" id="groundY" />
         </div>
-        <div class="control-group">
-          <label for="levelName">Nom du niveau:</label>
-          <input id="levelName" type="text" value="niveau_1" />
+        <div>
+          <label>DÃ©but X</label>
+          <input type="number" id="groundStart" />
         </div>
-        <button class="action-btn" onclick="saveToGame()">🚀 Enregistrer dans le jeu</button>
-        <button class="action-btn secondary" onclick="clearCanvas()">🗑️ Effacer tout</button>
-        <button class="action-btn neutral" onclick="exportJSON()">⬇️ Exporter JSON (jeu)</button>
-        <button class="action-btn neutral" onclick="exportPython()">⬇️ Exporter Python (jeu)</button>
+        <div>
+          <label>Fin X</label>
+          <input type="number" id="groundEnd" />
+        </div>
       </div>
     </div>
 
-    <script>
-      const canvas = document.getElementById('gameCanvas');
-      const ctx = canvas.getContext('2d');
-      let currentTool = 'platform';
-      let gridSize = 40;
-      let isDrawing = false;
+    <div class="section">
+      <h2>Spawn</h2>
+      <div class="grid-2">
+        <div>
+          <label>X</label>
+          <input type="number" id="spawnX" />
+        </div>
+        <div>
+          <label>Y</label>
+          <input type="number" id="spawnY" />
+        </div>
+      </div>
+    </div>
 
-      let levelData = {
-        platforms: [],
-        player: null,
-        spikes: [],
-        goal: null,
-      };
+    <div class="section">
+      <h2>But (porte)</h2>
+      <div class="grid-2">
+        <div>
+          <label>X</label>
+          <input type="number" id="goalX" />
+        </div>
+        <div>
+          <label>Y</label>
+          <input type="number" id="goalY" />
+        </div>
+        <div>
+          <label>Largeur</label>
+          <input type="number" id="goalW" />
+        </div>
+        <div>
+          <label>Hauteur</label>
+          <input type="number" id="goalH" />
+        </div>
+      </div>
+    </div>
 
-      // Outils
-      document.querySelectorAll('.tool-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-          document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
-          this.classList.add('active');
-          currentTool = this.dataset.tool;
-        });
+    <div class="section">
+      <h2>Plateformes</h2>
+      <div class="platforms" id="platformList"></div>
+      <button id="addPlatformBtn">+ Ajouter une plateforme</button>
+      <small class="mono">Astuce: cliquez dans la prÃ©visualisation pour ajouter rapidement (100x20).</small>
+    </div>
+  </div>
+
+  <div class="canvas-wrap">
+    <div class="toolbar">
+      <small class="mono">AperÃ§u. DÃ©filement horizontal: molette Shift.</small>
+      <small class="mono">Zoom: Ctrl + molette.</small>
+    </div>
+    <canvas id="view"></canvas>
+  </div>
+
+  <script>
+    const DEFAULT_LEVEL = {
+      name: 'Niveau 1',
+      ground: { y: 680, start_x: 0, end_x: 3000 },
+      spawn: { x: 683, y: 590 },
+      goal: { x: 2300, y: -30, w: 70, h: 110 },
+      platforms: [
+        { x: 100, y: 560, w: 200, h: 20 },
+        { x: 380, y: 480, w: 180, h: 20 },
+        { x: 620, y: 420, w: 160, h: 20 },
+        { x: 860, y: 360, w: 140, h: 20 },
+        { x: 1060, y: 300, w: 180, h: 20 },
+        { x: 1300, y: 200, w: 250, h: 20 },
+        { x: 1600, y: 600, w: 100, h: 20 },
+        { x: 1750, y: 500, w: 100, h: 20 },
+        { x: 1600, y: 400, w: 100, h: 20 },
+        { x: 1750, y: 300, w: 100, h: 20 },
+        { x: 1600, y: 200, w: 100, h: 20 },
+        { x: 1750, y: 100, w: 100, h: 20 },
+        { x: 1900, y: 60,  w: 500, h: 20 }
+      ]
+    };
+
+    let data = { levels: [ structuredClone(DEFAULT_LEVEL) ] };
+    let current = 0;
+
+    const els = {
+      levelSelect: document.getElementById('levelSelect'),
+      levelName: document.getElementById('levelName'),
+      groundY: document.getElementById('groundY'),
+      groundStart: document.getElementById('groundStart'),
+      groundEnd: document.getElementById('groundEnd'),
+      spawnX: document.getElementById('spawnX'),
+      spawnY: document.getElementById('spawnY'),
+      goalX: document.getElementById('goalX'),
+      goalY: document.getElementById('goalY'),
+      goalW: document.getElementById('goalW'),
+      goalH: document.getElementById('goalH'),
+      platformList: document.getElementById('platformList'),
+      addPlatformBtn: document.getElementById('addPlatformBtn'),
+      addLevelBtn: document.getElementById('addLevelBtn'),
+      deleteLevelBtn: document.getElementById('deleteLevelBtn'),
+      exportBtn: document.getElementById('exportBtn'),
+      importFile: document.getElementById('importFile'),
+      view: document.getElementById('view')
+    };
+
+    function refreshLevelSelect() {
+      els.levelSelect.innerHTML = '';
+      data.levels.forEach((lvl, i) => {
+        const opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = `${i+1}. ${lvl.name || 'Sans nom'}`;
+        els.levelSelect.appendChild(opt);
+      });
+      els.levelSelect.value = String(current);
+    }
+
+    function bindValue(input, getter, setter) {
+      input.value = getter();
+      input.oninput = () => { setter(Number.isFinite(+input.value) ? +input.value : input.value); draw(); };
+    }
+
+    function renderForm() {
+      const lvl = data.levels[current];
+      els.levelName.value = lvl.name || '';
+      bindValue(els.groundY, () => lvl.ground.y, v => lvl.ground.y = v);
+      bindValue(els.groundStart, () => lvl.ground.start_x, v => lvl.ground.start_x = v);
+      bindValue(els.groundEnd, () => lvl.ground.end_x, v => lvl.ground.end_x = v);
+      bindValue(els.spawnX, () => lvl.spawn.x, v => lvl.spawn.x = v);
+      bindValue(els.spawnY, () => lvl.spawn.y, v => lvl.spawn.y = v);
+      bindValue(els.goalX, () => lvl.goal.x, v => lvl.goal.x = v);
+      bindValue(els.goalY, () => lvl.goal.y, v => lvl.goal.y = v);
+      bindValue(els.goalW, () => lvl.goal.w, v => lvl.goal.w = v);
+      bindValue(els.goalH, () => lvl.goal.h, v => lvl.goal.h = v);
+
+      els.levelName.oninput = () => { lvl.name = els.levelName.value; refreshLevelSelect(); };
+
+      els.platformList.innerHTML = '';
+      lvl.platforms.forEach((p, idx) => {
+        const row = document.createElement('div');
+        row.className = 'platform';
+        row.innerHTML = `
+          <input type="number" value="${p.x}" />
+          <input type="number" value="${p.y}" />
+          <input type="number" value="${p.w}" />
+          <input type="number" value="${p.h}" />
+          <button data-idx="${idx}">Ã—</button>
+        `;
+        const [x,y,w,h,btn] = row.querySelectorAll('input,button');
+        x.oninput = () => { p.x = +x.value; draw(); };
+        y.oninput = () => { p.y = +y.value; draw(); };
+        w.oninput = () => { p.w = +w.value; draw(); };
+        h.oninput = () => { p.h = +h.value; draw(); };
+        btn.onclick = () => { lvl.platforms.splice(idx,1); renderForm(); draw(); };
+        els.platformList.appendChild(row);
+      });
+    }
+
+    els.addPlatformBtn.onclick = () => {
+      data.levels[current].platforms.push({ x: 100, y: 100, w: 100, h: 20 });
+      renderForm();
+      draw();
+    };
+
+    els.addLevelBtn.onclick = () => {
+      data.levels.push(structuredClone(DEFAULT_LEVEL));
+      current = data.levels.length - 1;
+      refreshLevelSelect();
+      renderForm();
+      draw();
+    };
+
+    els.deleteLevelBtn.onclick = () => {
+      if (data.levels.length <= 1) return;
+      data.levels.splice(current, 1);
+      current = Math.max(0, current - 1);
+      refreshLevelSelect();
+      renderForm();
+      draw();
+    };
+
+    els.levelSelect.onchange = () => {
+      current = +els.levelSelect.value;
+      renderForm();
+      draw();
+    };
+
+    els.exportBtn.onclick = () => {
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'levels.json';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    };
+
+    els.importFile.onchange = async () => {
+      const file = els.importFile.files?.[0];
+      if (!file) return;
+      const text = await file.text();
+      try {
+        const json = JSON.parse(text);
+        if (!json.levels || !Array.isArray(json.levels)) throw new Error('levels[] manquant');
+        data = json;
+        current = 0;
+        refreshLevelSelect();
+        renderForm();
+        draw();
+      } catch (e) {
+        alert('Fichier invalide: ' + e.message);
+      } finally {
+        els.importFile.value = '';
+      }
+    };
+
+    // Canvas preview
+    const ctx = els.view.getContext('2d');
+    let zoom = 1;
+    let scrollX = 0, scrollY = 0;
+
+    function resize() {
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      els.view.width = Math.floor(els.view.clientWidth * dpr);
+      els.view.height = Math.floor(els.view.clientHeight * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      draw();
+    }
+    window.addEventListener('resize', resize);
+
+    els.view.addEventListener('wheel', (e) => {
+      if (e.ctrlKey) {
+        e.preventDefault();
+        const delta = Math.sign(e.deltaY);
+        zoom = Math.min(3, Math.max(0.25, zoom * (delta > 0 ? 0.9 : 1.1)));
+        draw();
+      } else if (e.shiftKey) {
+        e.preventDefault();
+        scrollX += e.deltaY;
+        draw();
+      }
+    }, { passive: false });
+
+    els.view.addEventListener('click', (e) => {
+      const rect = els.view.getBoundingClientRect();
+      const x = (e.clientX - rect.left) * (els.view.width / rect.width);
+      const y = (e.clientY - rect.top) * (els.view.height / rect.height);
+      const px = (x - scrollX) / zoom;
+      const py = (y - scrollY) / zoom;
+      const lvl = data.levels[current];
+      lvl.platforms.push({ x: Math.round(px), y: Math.round(py), w: 100, h: 20 });
+      renderForm();
+      draw();
+    });
+
+    function drawGrid() {
+      const w = els.view.clientWidth, h = els.view.clientHeight;
+      ctx.save();
+      ctx.translate(scrollX, scrollY);
+      ctx.scale(zoom, zoom);
+      ctx.clearRect(-scrollX/zoom, -scrollY/zoom, w/zoom, h/zoom);
+      ctx.fillStyle = '#a9d3ff';
+      ctx.fillRect(-scrollX/zoom, -scrollY/zoom, w/zoom, h/zoom);
+      const step = 50;
+      ctx.strokeStyle = '#cde5ff';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let x = -scrollX/zoom % step; x < w/zoom; x += step) {
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, h/zoom);
+      }
+      for (let y = -scrollY/zoom % step; y < h/zoom; y += step) {
+        ctx.moveTo(0, y);
+        ctx.lineTo(w/zoom, y);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function draw() {
+      const w = els.view.clientWidth, h = els.view.clientHeight;
+      ctx.clearRect(0, 0, w, h);
+      drawGrid();
+      const lvl = data.levels[current];
+      ctx.save();
+      ctx.translate(scrollX, scrollY);
+      ctx.scale(zoom, zoom);
+
+      // Ground
+      ctx.fillStyle = '#2e8b57';
+      ctx.fillRect(lvl.ground.start_x, lvl.ground.y, lvl.ground.end_x - lvl.ground.start_x, 100);
+
+      // Platforms
+      ctx.fillStyle = '#654321';
+      ctx.strokeStyle = '#8b5a2b';
+      lvl.platforms.forEach(p => {
+        ctx.fillRect(p.x, p.y, p.w, p.h);
+        ctx.strokeRect(p.x, p.y, p.w, p.h);
       });
 
-      document.getElementById('gridSize').addEventListener('change', e => {
-        gridSize = parseInt(e.target.value, 10) || 40;
-        redraw();
-      });
+      // Goal
+      ctx.fillStyle = '#b8860b';
+      ctx.fillRect(lvl.goal.x, lvl.goal.y, lvl.goal.w, lvl.goal.h);
 
-      // Dessin grille
-      function drawGrid() {
-        ctx.strokeStyle = '#ddd';
-        ctx.lineWidth = 0.5;
-        for (let x = 0; x < canvas.width; x += gridSize) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke(); }
-        for (let y = 0; y < canvas.height; y += gridSize) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke(); }
-      }
+      // Spawn
+      ctx.fillStyle = '#1f6feb';
+      ctx.beginPath();
+      ctx.arc(lvl.spawn.x, lvl.spawn.y, 10, 0, Math.PI * 2);
+      ctx.fill();
 
-      function redraw() {
-        ctx.fillStyle = '#87CEEB';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        drawGrid();
-        // Plateformes
-        ctx.fillStyle = '#8B4513';
-        levelData.platforms.forEach(p => { ctx.fillRect(p.x, p.y, p.width, p.height); ctx.strokeStyle = '#654321'; ctx.lineWidth = 2; ctx.strokeRect(p.x, p.y, p.width, p.height); });
-        // Joueur
-        if (levelData.player) { ctx.fillStyle = '#4169E1'; ctx.fillRect(levelData.player.x, levelData.player.y, levelData.player.width, levelData.player.height); ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.strokeRect(levelData.player.x, levelData.player.y, levelData.player.width, levelData.player.height); }
-        // Pièges
-        ctx.fillStyle = '#FF4500'; levelData.spikes.forEach(s => { ctx.fillRect(s.x, s.y, s.width, s.height); ctx.strokeStyle = '#8B0000'; ctx.lineWidth = 2; ctx.strokeRect(s.x, s.y, s.width, s.height); });
-        // Arrivée
-        if (levelData.goal) { ctx.fillStyle = '#32CD32'; ctx.fillRect(levelData.goal.x, levelData.goal.y, levelData.goal.width, levelData.goal.height); ctx.strokeStyle = '#228B22'; ctx.lineWidth = 2; ctx.strokeRect(levelData.goal.x, levelData.goal.y, levelData.goal.width, levelData.goal.height); }
-      }
+      ctx.restore();
+    }
 
-      // Souris
-      canvas.addEventListener('mousedown', (e) => { isDrawing = true; handleClick(e); });
-      canvas.addEventListener('mousemove', (e) => { if (isDrawing && currentTool === 'platform') handleClick(e); });
-      canvas.addEventListener('mouseup', () => { isDrawing = false; });
-
-      function handleClick(e) {
-        const rect = canvas.getBoundingClientRect();
-        const x = Math.floor((e.clientX - rect.left) / gridSize) * gridSize;
-        const y = Math.floor((e.clientY - rect.top) / gridSize) * gridSize;
-        if (currentTool === 'erase') {
-          levelData.platforms = levelData.platforms.filter(p => !(p.x === x && p.y === y));
-          levelData.spikes = levelData.spikes.filter(s => !(s.x === x && s.y === y));
-          if (levelData.player && levelData.player.x === x && levelData.player.y === y) levelData.player = null;
-          if (levelData.goal && levelData.goal.x === x && levelData.goal.y === y) levelData.goal = null;
-        } else if (currentTool === 'platform') {
-          if (!levelData.platforms.some(p => p.x === x && p.y === y)) levelData.platforms.push({ x, y, width: gridSize, height: gridSize });
-        } else if (currentTool === 'player') {
-          levelData.player = { x, y, width: gridSize, height: gridSize };
-        } else if (currentTool === 'spike') {
-          levelData.spikes.push({ x, y, width: gridSize, height: gridSize });
-        } else if (currentTool === 'goal') {
-          levelData.goal = { x, y, width: gridSize, height: gridSize };
-        }
-        redraw();
-      }
-
-      async function saveToGame() {
-        const levelName = document.getElementById('levelName').value || 'niveau_1';
-        if (!levelData.player) return showNotification('⚠️ Ajoutez une position de départ pour le joueur !', 'warn');
-        if (!levelData.goal) return showNotification('⚠️ Ajoutez un point d\'arrivée !', 'warn');
-        if (levelData.platforms.length === 0) return showNotification('⚠️ Ajoutez au moins une plateforme !', 'warn');
-
-        try {
-          if (!(window.storage && typeof window.storage.set === 'function')) {
-            exportJSON();
-            return showNotification('ℹ️ Pas de stockage intégré. JSON exporté, placez-le à côté du jeu.', 'warn');
-          }
-          const code = generatePythonCode(levelName);
-          const id = `level_${Date.now()}`;
-          await window.storage.set(id, JSON.stringify({ name: levelName, data: levelData, pythonCode: code, timestamp: Date.now() }));
-          await window.storage.set('active_level', id);
-          showNotification('✅ Niveau sauvegardé et activé dans le jeu !');
-        } catch (e) {
-          console.error(e);
-          showNotification('❌ Erreur lors de la sauvegarde', 'error');
-        }
-      }
-
-      function generatePythonCode(levelName) {
-        let code = `# Niveau: ${levelName}\n`;
-        code += `platforms = [\n`;
-        levelData.platforms.forEach(p => { code += `    pygame.Rect(${p.x}, ${p.y}, ${p.width}, ${p.height}),\n`; });
-        code += `]\n\n`;
-        code += `spawn_point = pygame.Vector2(${levelData.player.x}, ${levelData.player.y})\n\n`;
-        code += `goal_rect = pygame.Rect(${levelData.goal.x}, ${levelData.goal.y}, ${levelData.goal.width}, ${levelData.goal.height})\n\n`;
-        if (levelData.spikes.length) {
-          code += `spikes = [\n`;
-          levelData.spikes.forEach(s => { code += `    pygame.Rect(${s.x}, ${s.y}, ${s.width}, ${s.height}),\n`; });
-          code += `]\n`;
-        }
-        return code;
-      }
-
-      function exportJSON() {
-        const data = { platforms: levelData.platforms, player: levelData.player, goal: levelData.goal, spikes: levelData.spikes };
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        downloadBlob(blob, 'editor_level.json');
-        showNotification('✅ editor_level.json téléchargé. Placez-le à côté du fichier Python du jeu.');
-      }
-
-      function exportPython() {
-        const name = document.getElementById('levelName').value || 'niveau_1';
-        const code = generatePythonCode(name);
-        const blob = new Blob([code], { type: 'text/x-python' });
-        downloadBlob(blob, 'editor_level.py');
-        showNotification('✅ editor_level.py téléchargé. Placez-le à côté du fichier Python du jeu.');
-      }
-
-      function downloadBlob(blob, filename) {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = filename; document.body.appendChild(a); a.click();
-        setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 0);
-      }
-
-      function clearCanvas() {
-        if (!confirm('Tout effacer ?')) return;
-        levelData = { platforms: [], player: null, spikes: [], goal: null };
-        document.getElementById('levelName').value = `niveau_${Date.now()}`;
-        redraw();
-      }
-
-      function showNotification(message, type) {
-        const n = document.createElement('div');
-        n.className = 'notification';
-        n.textContent = message;
-        if (type === 'warn') n.style.background = '#ff9800';
-        if (type === 'error') n.style.background = '#f44336';
-        document.body.appendChild(n);
-        setTimeout(() => n.remove(), 2500);
-      }
-
-            // Init
-            redraw();
-        </script>
-    </body>
+    // Init
+    refreshLevelSelect();
+    renderForm();
+    resize();
+    draw();
+  </script>
+</body>
 </html>
