@@ -19,18 +19,27 @@
     .row { display: flex; gap: 8px; align-items: center; }
     .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .platforms { display: flex; flex-direction: column; gap: 8px; max-height: 240px; overflow: auto; }
-    .platform { display: grid; grid-template-columns: repeat(4, 1fr) 32px; gap: 6px; }
+    .platform { display: grid; grid-template-columns: repeat(4, 1fr) 32px; gap: 6px; border-bottom: 1px solid #ddd; }
     .canvas-wrap { position: relative; height: calc(100vh - 60px); background: #eef6ff; }
     canvas { width: 100%; height: 100%; display: block; background: linear-gradient(180deg, #7db3e8 0%, #cfe9ff 100%); }
     .toolbar { position: absolute; top: 12px; left: 12px; display: flex; gap: 8px; background: rgba(255,255,255,0.9); padding: 8px 10px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,.08); }
     small.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #555; }
     .tag { padding: 2px 6px; border-radius: 999px; font-size: 11px; border: 1px solid #ddd; }
     .tag.enemy { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
+    .list-headers { display: grid; gap: 6px; font-size: 12px; color: #555; padding: 0 2px; }
+    .list-headers.platform { grid-template-columns: repeat(4, 1fr) 32px; }
+    .list-headers.enemy { grid-template-columns: repeat(4, 1fr) 1fr 32px; }
+    .list-headers span { font-weight: 600; }
+    .enemy-type { display: inline-block; width: 60px; }
+    .enemy-type.basic { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
+    .enemy-type.patrol { background: #f7d2c4; color: #7a3e1c; border-color: #ffd7be; }
+    .enemy-type.shooter { background: #c4f7d2; color: #1c7a3e; border-color: #bef7d7; }
+    .enemy-type.flyer { background: #d2c4f7; color: #3e1c7a; border-color: #d7bef7; }
   </style>
 </head>
 <body>
   <header>
-    <h1>Ã‰diteur de niveaux</h1>
+    <h1>Éditeur de niveaux</h1>
     <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
       <input type="file" id="importFile" accept="application/json" />
       <button class="primary" id="exportBtn">Exporter levels.json</button>
@@ -43,7 +52,7 @@
       <div class="row">
         <select id="levelSelect" style="flex:1"></select>
         <button id="addLevelBtn">Ajouter</button>
-        <button class="danger" id="deleteLevelBtn">Suppr</button>
+        <button class="danger" id="deleteLevelBtn">Supprimer</button>
       </div>
       <label>Nom</label>
       <input type="text" id="levelName" placeholder="Nom du niveau" />
@@ -57,7 +66,7 @@
           <input type="number" id="groundY" />
         </div>
         <div>
-          <label>DÃ©but X</label>
+          <label>Début X</label>
           <input type="number" id="groundStart" />
         </div>
         <div>
@@ -79,6 +88,7 @@
           <input type="number" id="spawnY" />
         </div>
       </div>
+      <label>Position de départ</label>
     </div>
 
     <div class="section">
@@ -101,17 +111,33 @@
           <input type="number" id="goalH" />
         </div>
       </div>
+      <label>Position de la porte</label>
     </div>
 
     <div class="section">
       <h2>Plateformes</h2>
+      <div class="list-headers platform">
+        <span>X</span>
+        <span>Y</span>
+        <span>Largeur</span>
+        <span>Hauteur</span>
+        <span></span>
+      </div>
       <div class="platforms" id="platformList"></div>
       <button id="addPlatformBtn">+ Ajouter une plateforme</button>
-      <small class="mono">Astuce: cliquez dans la prÃ©visualisation pour ajouter rapidement (100x20).</small>
+      <small class="mono">Astuce: cliquez dans la prévisualisation pour ajouter rapidement (100x20).</small>
     </div>
 
     <div class="section">
       <h2>Ennemis <span class="tag enemy">danger</span></h2>
+      <div class="list-headers enemy">
+        <span>X</span>
+        <span>Y</span>
+        <span>Largeur</span>
+        <span>Hauteur</span>
+        <span>Type</span>
+        <span></span>
+      </div>
       <div class="platforms" id="enemyList"></div>
       <button id="addEnemyBtn">+ Ajouter un ennemi</button>
       <small class="mono">Conseil: placez-les au-dessus du sol et des plateformes.</small>
