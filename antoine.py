@@ -1,6 +1,8 @@
 import pygame
 import random
 import math
+import json
+import os
 
 # === Initialisation ===
 pygame.init()
@@ -8,10 +10,15 @@ screen = pygame.display.set_mode((1366, 769))
 clock = pygame.time.Clock()
 font = pygame.font.SysFont(None, 48)
 small_font = pygame.font.SysFont(None, 32)
+title_font = pygame.font.SysFont(None, 96)
+fword_font = pygame.font.SysFont(None, 180)
 
 # === Constantes ===
 SCREEN_WIDTH, SCREEN_HEIGHT = screen.get_size()
 GROUND_Y = 680
+GROUND_START_X = 0
+GROUND_END_X = 3000
+
 GRAVITY = 800
 JUMP_FORCE = -600
 MOVE_SPEED = 300
@@ -32,6 +39,11 @@ PLATFORM_COLOR = (101, 67, 33)
 PLATFORM_HIGHLIGHT = (139, 90, 43)
 DOOR_COLOR = (184, 134, 11)
 DOOR_FRAME = (139, 69, 19)
+SHIRT_COLOR = (50, 120, 220)
+PANTS_COLOR = (30, 50, 90)
+SHOE_COLOR = (40, 40, 40)
+HAND_COLOR = (255, 220, 177)
+HAIR_COLOR = (60, 40, 20)
 
 # === Particules ===
 particles = []
@@ -48,6 +60,80 @@ def create_particles(pos, color, count=8):
             "life": 1.0
         })
 
+def circle_rect_collision(center, radius, rect):
+    cx, cy = center
+    closest_x = max(rect.left, min(cx, rect.right))
+    closest_y = max(rect.top, min(cy, rect.bottom))
+    dx = cx - closest_x
+    dy = cy - closest_y
+    return dx * dx + dy * dy <= radius * radius
+
+# === Nuages et Parallax ===
+clouds = []
+
+def init_clouds():
+    global clouds
+    clouds = []
+    for i in range(12):
+        x = random.randint(-200, 3000)
+        y = random.randint(50, 300)
+        speed = random.uniform(10, 30)
+        scale = random.uniform(0.6, 1.4)
+        clouds.append({"x": x, "y": y, "speed": speed, "scale": scale})
+
+def update_clouds(dt):
+    for c in clouds:
+        c["x"] += c["speed"] * dt
+        if c["x"] - camera_offset.x > 3200:
+            c["x"] = camera_offset.x - random.randint(200, 600)
+            c["y"] = random.randint(50, 300)
+            c["speed"] = random.uniform(10, 30)
+
+def draw_cloud(screen, x, y, scale):
+    # Nuage composé de plusieurs ellipses
+    color = (255, 255, 255)
+    offsets = [(-40, 10, 90, 50), (0, 0, 120, 60), (60, 15, 80, 45)]
+    for ox, oy, w, h in offsets:
+        rect = pygame.Rect(int(x + ox*scale), int(y + oy*scale), int(w*scale), int(h*scale))
+        pygame.draw.ellipse(screen, color, rect)
+
+def draw_parallax_background():
+    # Ciel dégradé
+    for i in range(SCREEN_HEIGHT):
+        color = (
+            int(70 + (130 - 70) * i / SCREEN_HEIGHT),
+            int(130 + (180 - 130) * i / SCREEN_HEIGHT),
+            int(180 + (230 - 180) * i / SCREEN_HEIGHT)
+        )
+        pygame.draw.line(screen, color, (0, i), (SCREEN_WIDTH, i))
+
+    # Montagnes (3 couches)
+    layers = [((90, 110, 140), 0.2, 180), ((80, 100, 130), 0.35, 260), ((70, 90, 120), 0.5, 340)]
+    for col, factor, base_y in layers:
+        points = []
+        start_x = -int(camera_offset.x * factor) - 300
+        for x in range(start_x, start_x + SCREEN_WIDTH + 600, 120):
+            y = base_y + int(40 * math.sin(x * 0.01))
+            points.append((x, y))
+        points = [(-1000, SCREEN_HEIGHT), *points, (SCREEN_WIDTH + 1000, SCREEN_HEIGHT)]
+        pygame.draw.polygon(screen, col, points)
+
+    # Nuages (parallax léger)
+    for c in clouds:
+        cx = c["x"] - camera_offset.x * 0.2
+        cy = c["y"] - camera_offset.y * 0.2
+        draw_cloud(screen, cx, cy, c["scale"])
+
+def draw_shadow(center_x, feet_y_world, max_radius):
+    # Ombre douce au sol
+    shadow_y = int(feet_y_world - camera_offset.y)
+    shadow_x = int(center_x - camera_offset.x)
+    width = int(max_radius * 2.4)
+    height = max(6, int(max_radius * 0.5))
+    surf = pygame.Surface((width, height), pygame.SRCALPHA)
+    pygame.draw.ellipse(surf, (0, 0, 0, 90), surf.get_rect())
+    screen.blit(surf, (shadow_x - width//2, shadow_y - height//2))
+
 # === Joueur ===
 player_pos = pygame.Vector2(SCREEN_WIDTH / 2, GROUND_Y)
 head_radius = 20
@@ -58,6 +144,10 @@ skin_color = (255, 220, 177)
 player_vel_y = 0
 direction = 1
 walk_cycle = 0
+blink_timer = 0.0
+blink_close = 0.0
+prev_on_ground = True
+shoot_recoil = 0.0
 
 player_pos.y = GROUND_Y - (head_radius + body_height + leg_height)
 spawn_point = player_pos.copy()
@@ -72,38 +162,113 @@ monster_spawn_timer = 0.0
 
 def spawn_monster():
     x = random.randint(100, 2500)
-    y = GROUND_Y - (head_radius + body_height + leg_height)
-    # 20% de chance de spawner un tank
-    is_tank = random.random() < 0.2
-    return {
+    # Types: tank (gros/lent), fast (petit/rapide), flyer (vole)
+    r = random.random()
+    if r < 0.3:
+        m_type = "tank"
+        radius = 32
+        speed = 60
+        hp = 3
+        y = GROUND_Y - radius
+        extra = {"vel_y": 0.0}
+    elif r < 0.7:
+        m_type = "fast"
+        radius = 18
+        speed = 140
+        hp = 1
+        y = GROUND_Y - radius
+        extra = {"vel_y": 0.0}
+    else:
+        m_type = "flyer"
+        radius = 22
+        speed = 110
+        hp = 1
+        base_y = random.randint(GROUND_Y - 280, GROUND_Y - 140)
+        y = base_y
+        extra = {"fly_phase": random.uniform(0, 6.28), "base_y": base_y}
+
+    data = {
         "pos": pygame.Vector2(x, y),
         "dir": random.choice([-1, 1]),
-        "is_tank": is_tank,
-        "hp": 2 if is_tank else 1,
-        "hit_flash": 0.0
+        "type": m_type,
+        "radius": radius,
+        "speed": speed,
+        "hp": hp,
+        "hit_flash": 0.0,
     }
+    data.update(extra)
+    return data
 
 monsters = [spawn_monster() for _ in range(MAX_MONSTERS)]
 
-# === Plateformes ===
-platforms = [
-    pygame.Rect(100, 560, 200, 20),
-    pygame.Rect(380, 480, 180, 20),
-    pygame.Rect(620, 420, 160, 20),
-    pygame.Rect(860, 360, 140, 20),
-    pygame.Rect(1060, 300, 180, 20),
-    pygame.Rect(1300, 200, 250, 20),
-    pygame.Rect(1600, 600, 100, 20),
-    pygame.Rect(1750, 500, 100, 20),
-    pygame.Rect(1600, 400, 100, 20),
-    pygame.Rect(1750, 300, 100, 20),
-    pygame.Rect(1600, 200, 100, 20),
-    pygame.Rect(1750, 100, 100, 20),
-    pygame.Rect(1900, 60, 500, 20),
-]
+# === Multi-niveaux: chargement levels.json et application d'un niveau ===
+def _default_level():
+    return {
+        "name": "Niveau 1",
+        "ground": {"y": 680, "start_x": 0, "end_x": 3000},
+        "spawn": {"x": SCREEN_WIDTH / 2, "y": 680 - (head_radius + body_height + leg_height)},
+        "goal": {"x": 2300, "y": -30, "w": 70, "h": 110},
+        "platforms": [
+            {"x": 100, "y": 560, "w": 200, "h": 20},
+            {"x": 380, "y": 480, "w": 180, "h": 20},
+            {"x": 620, "y": 420, "w": 160, "h": 20},
+            {"x": 860, "y": 360, "w": 140, "h": 20},
+            {"x": 1060, "y": 300, "w": 180, "h": 20},
+            {"x": 1300, "y": 200, "w": 250, "h": 20},
+            {"x": 1600, "y": 600, "w": 100, "h": 20},
+            {"x": 1750, "y": 500, "w": 100, "h": 20},
+            {"x": 1600, "y": 400, "w": 100, "h": 20},
+            {"x": 1750, "y": 300, "w": 100, "h": 20},
+            {"x": 1600, "y": 200, "w": 100, "h": 20},
+            {"x": 1750, "y": 100, "w": 100, "h": 20},
+            {"x": 1900, "y": 60, "w": 500, "h": 20},
+        ],
+    }
 
-goal_rect = pygame.Rect(2300, 0, 40, 60)
-spawn_point = pygame.Vector2(SCREEN_WIDTH / 2, GROUND_Y - (head_radius + body_height + leg_height))
+levels = []
+levels_path = os.path.join(os.path.dirname(__file__), "levels.json")
+try:
+    if os.path.isfile(levels_path):
+        with open(levels_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, dict) and isinstance(data.get("levels"), list) and data["levels"]:
+                levels = data["levels"]
+except Exception:
+    levels = []
+
+if not levels:
+    levels = [_default_level()]
+
+selected_level_idx = 0
+
+platforms = []
+goal_rect = pygame.Rect(0, 0, 0, 0)
+spawn_point = pygame.Vector2(0, 0)
+
+def apply_level(level):
+    global GROUND_Y, GROUND_START_X, GROUND_END_X, platforms, goal_rect, spawn_point
+    # Sol
+    GROUND_Y = int(level.get("ground", {}).get("y", GROUND_Y))
+    GROUND_START_X = int(level.get("ground", {}).get("start_x", GROUND_START_X))
+    GROUND_END_X = int(level.get("ground", {}).get("end_x", GROUND_END_X))
+    # Plateformes
+    platforms = [
+        pygame.Rect(int(p.get("x", 0)), int(p.get("y", 0)), int(p.get("w", 0)), int(p.get("h", 0)))
+        for p in level.get("platforms", [])
+    ]
+    # Porte/objectif
+    g = level.get("goal", {})
+    goal_rect.x = int(g.get("x", 2300))
+    goal_rect.y = int(g.get("y", -30))
+    goal_rect.w = int(g.get("w", 70))
+    goal_rect.h = int(g.get("h", 110))
+    # Spawn
+    s = level.get("spawn", {})
+    spawn_point.update(float(s.get("x", SCREEN_WIDTH / 2)), float(s.get("y", GROUND_Y - (head_radius + body_height + leg_height))))
+
+# Appliquer le niveau initial
+apply_level(levels[selected_level_idx])
+init_clouds()
 
 # === Score, Vies, Victoire ===
 score = 0
@@ -113,36 +278,188 @@ invuln_timer = 0.0
 is_invulnerable = False
 victory = False
 
+# === Etat du jeu ===
+game_state = "MENU"  # MENU, PLAYING, PAUSED
+fword_timer = 0.0
+
 # === Boucle principale ===
 running = True
 dt = 0
 
 while running:
+    # Boutons du menu (recalculés à chaque frame pour simplicité)
+    play_rect = pygame.Rect(SCREEN_WIDTH//2 - 150, SCREEN_HEIGHT//2 + 40, 300, 70)
+    quit_rect = pygame.Rect(SCREEN_WIDTH//2 - 150, SCREEN_HEIGHT//2 + 130, 300, 70)
+    # Boutons de pause
+    pause_resume_rect = pygame.Rect(SCREEN_WIDTH//2 - 150, SCREEN_HEIGHT//2 - 20, 300, 70)
+    pause_menu_rect = pygame.Rect(SCREEN_WIDTH//2 - 150, SCREEN_HEIGHT//2 + 70, 300, 70)
+    pause_quit_rect = pygame.Rect(SCREEN_WIDTH//2 - 150, SCREEN_HEIGHT//2 + 160, 300, 70)
     # Événements
     for event in pygame.event.get():
-        if event.type == pygame.QUIT or (
-            event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
+        if event.type == pygame.QUIT:
             running = False
+        elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            if game_state == "MENU":
+                running = False
+            elif game_state == "PLAYING":
+                # Ouvrir le menu pause
+                game_state = "PAUSED"
+            elif game_state == "PAUSED":
+                # Reprendre
+                game_state = "PLAYING"
+        elif event.type == pygame.KEYDOWN and event.key == pygame.K_o:
+            # Easter egg: gros texte à l'écran
+            fword_timer = 1.5
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            # Tir vers la souris
-            mouse_world_x = event.pos[0] + camera_offset.x
-            mouse_world_y = event.pos[1] + camera_offset.y
-            
-            dx = mouse_world_x - player_pos.x
-            dy = mouse_world_y - player_pos.y
-            distance = math.sqrt(dx**2 + dy**2)
-            
-            if distance > 0:
-                dir_x = dx / distance
-                dir_y = dy / distance
+            if game_state == "MENU":
+                if play_rect.collidepoint(event.pos):
+                    # Reset et démarrage du jeu
+                    score = 0
+                    lives = 3
+                    invuln_timer = 0.0
+                    is_invulnerable = False
+                    victory = False
+                    # Appliquer le niveau sélectionné au démarrage
+                    apply_level(levels[selected_level_idx])
+                    player_pos = spawn_point.copy()
+                    player_vel_y = 0
+                    camera_offset = pygame.Vector2(0, 0)
+                    monsters = [spawn_monster() for _ in range(MAX_MONSTERS)]
+                    projectiles = []
+                    particles = []
+                    monster_spawn_timer = 0.0
+                    game_state = "PLAYING"
+                elif quit_rect.collidepoint(event.pos):
+                    running = False
+            elif game_state == "PAUSED":
+                if pause_resume_rect.collidepoint(event.pos):
+                    game_state = "PLAYING"
+                elif pause_menu_rect.collidepoint(event.pos):
+                    game_state = "MENU"
+                elif pause_quit_rect.collidepoint(event.pos):
+                    running = False
+            elif game_state == "PLAYING":
+                # Tir vers la souris
+                mouse_world_x = event.pos[0] + camera_offset.x
+                mouse_world_y = event.pos[1] + camera_offset.y
                 
-                proj_x = player_pos.x + dir_x * (head_radius + 10)
-                proj_y = player_pos.y + dir_y * (head_radius + 10)
+                dx = mouse_world_x - player_pos.x
+                dy = mouse_world_y - player_pos.y
+                distance = math.sqrt(dx**2 + dy**2)
                 
-                projectiles.append({
-                    "pos": pygame.Vector2(proj_x, proj_y),
-                    "vel": pygame.Vector2(dir_x * PROJECTILE_SPEED, dir_y * PROJECTILE_SPEED)
-                })
+                if distance > 0:
+                    dir_x = dx / distance
+                    dir_y = dy / distance
+                    
+                    proj_x = player_pos.x + dir_x * (head_radius + 10)
+                    proj_y = player_pos.y + dir_y * (head_radius + 10)
+                    
+                    projectiles.append({
+                        "pos": pygame.Vector2(proj_x, proj_y),
+                        "vel": pygame.Vector2(dir_x * PROJECTILE_SPEED, dir_y * PROJECTILE_SPEED)
+                    })
+                    # Animation de recul et effet visuel
+                    shoot_recoil = 0.12
+                    create_particles((proj_x, proj_y), (255, 230, 100), 6)
+        elif event.type == pygame.KEYDOWN and game_state == "PAUSED":
+            if event.key in (pygame.K_RETURN, pygame.K_SPACE):
+                game_state = "PLAYING"
+            elif event.key == pygame.K_m:
+                game_state = "MENU"
+        elif event.type == pygame.KEYDOWN:
+            if game_state == "MENU" and event.key in (pygame.K_RETURN, pygame.K_SPACE):
+                # Lancer le jeu via clavier
+                score = 0
+                lives = 3
+                invuln_timer = 0.0
+                is_invulnerable = False
+                victory = False
+                # Appliquer le niveau sélectionné au démarrage
+                apply_level(levels[selected_level_idx])
+                player_pos = spawn_point.copy()
+                player_vel_y = 0
+                camera_offset = pygame.Vector2(0, 0)
+                monsters = [spawn_monster() for _ in range(MAX_MONSTERS)]
+                projectiles = []
+                particles = []
+                monster_spawn_timer = 0.0
+                game_state = "PLAYING"
+            elif game_state == "MENU" and event.key in (pygame.K_LEFT, pygame.K_RIGHT):
+                # Changer de niveau sélectionné dans le menu
+                if event.key == pygame.K_LEFT:
+                    selected_level_idx = (selected_level_idx - 1) % len(levels)
+                else:
+                    selected_level_idx = (selected_level_idx + 1) % len(levels)
+                # Pré-appliquer pour que spawn/sol soient prêts au lancement
+                apply_level(levels[selected_level_idx])
+
+    # --- MENU PRINCIPAL ---
+    if game_state == "MENU":
+        # Fond avec parallax + nuages
+        update_clouds(dt)
+        draw_parallax_background()
+
+        # Titre
+        title_surf = title_font.render("Mon Jeu", True, (255, 255, 255))
+        screen.blit(title_surf, (SCREEN_WIDTH//2 - title_surf.get_width()//2, SCREEN_HEIGHT//2 - 120))
+
+        # Boutons
+        mouse_pos = pygame.mouse.get_pos()
+        def draw_button(rect, text):
+            hovered = rect.collidepoint(mouse_pos)
+            base = (50, 50, 50)
+            hover = (80, 80, 80)
+            pygame.draw.rect(screen, hover if hovered else base, rect, border_radius=10)
+            pygame.draw.rect(screen, (200, 200, 200), rect, 3, border_radius=10)
+            txt = font.render(text, True, (255, 255, 255))
+            screen.blit(txt, (rect.centerx - txt.get_width()//2, rect.centery - txt.get_height()//2))
+
+        # Afficher le niveau sélectionné
+        level_name = levels[selected_level_idx].get("name", f"Niveau {selected_level_idx+1}")
+        level_txt = small_font.render(f"Niveau: {level_name}", True, (255, 255, 255))
+        screen.blit(level_txt, (SCREEN_WIDTH//2 - level_txt.get_width()//2, SCREEN_HEIGHT//2 - 60))
+
+        draw_button(play_rect, "Jouer")
+        draw_button(quit_rect, "Quitter")
+
+        hint = small_font.render("Entrée/Espace pour jouer", True, (230, 230, 230))
+        screen.blit(hint, (SCREEN_WIDTH//2 - hint.get_width()//2, SCREEN_HEIGHT//2 + 220))
+
+        pygame.display.flip()
+        dt = clock.tick(FPS) / 1000
+        continue
+
+    # --- MENU PAUSE ---
+    if game_state == "PAUSED":
+        # Fond atténué
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180))
+        screen.blit(overlay, (0, 0))
+
+        # Titre
+        pause_title = title_font.render("Pause", True, (255, 255, 255))
+        screen.blit(pause_title, (SCREEN_WIDTH//2 - pause_title.get_width()//2, SCREEN_HEIGHT//2 - 120))
+
+        mouse_pos = pygame.mouse.get_pos()
+        def draw_button(rect, text):
+            hovered = rect.collidepoint(mouse_pos)
+            base = (50, 50, 50)
+            hover = (80, 80, 80)
+            pygame.draw.rect(screen, hover if hovered else base, rect, border_radius=10)
+            pygame.draw.rect(screen, (200, 200, 200), rect, 3, border_radius=10)
+            txt = font.render(text, True, (255, 255, 255))
+            screen.blit(txt, (rect.centerx - txt.get_width()//2, rect.centery - txt.get_height()//2))
+
+        draw_button(pause_resume_rect, "Reprendre")
+        draw_button(pause_menu_rect, "Menu")
+        draw_button(pause_quit_rect, "Quitter")
+
+        hint = small_font.render("Echap/Entrée/Espace: Reprendre | M: Menu", True, (230, 230, 230))
+        screen.blit(hint, (SCREEN_WIDTH//2 - hint.get_width()//2, SCREEN_HEIGHT//2 + 250))
+
+        pygame.display.flip()
+        dt = clock.tick(FPS) / 1000
+        continue
 
     # --- LOGIQUE DU JEU ---
 
@@ -165,7 +482,8 @@ while running:
     # Détection sol/plateforme
     feet_y = player_pos.y + head_radius + body_height + leg_height
     on_ground = False
-    if feet_y >= GROUND_Y - 0.1:
+    # Sol infini limité en X
+    if feet_y >= GROUND_Y - 0.1 and GROUND_START_X <= player_pos.x <= GROUND_END_X:
         on_ground = True
     else:
         for plat in platforms:
@@ -182,7 +500,7 @@ while running:
     player_pos.y += player_vel_y * dt
 
     feet_y = player_pos.y + head_radius + body_height + leg_height
-    if feet_y > GROUND_Y:
+    if feet_y > GROUND_Y and GROUND_START_X <= player_pos.x <= GROUND_END_X:
         player_pos.y = GROUND_Y - (head_radius + body_height + leg_height)
         player_vel_y = 0
 
@@ -198,6 +516,21 @@ while running:
                     break
 
     player_pos.x = max(head_radius, player_pos.x)
+
+    if not prev_on_ground and on_ground and player_vel_y == 0:
+        feet_x = player_pos.x
+        feet_y = GROUND_Y if feet_y >= GROUND_Y else player_pos.y + head_radius + body_height + leg_height
+        create_particles((feet_x, feet_y), (180, 180, 180), 10)
+    prev_on_ground = on_ground
+
+    blink_timer -= dt
+    if blink_timer <= 0 and blink_close <= 0:
+        blink_close = 0.12
+        blink_timer = random.uniform(2.0, 5.0)
+    if blink_close > 0:
+        blink_close -= dt
+    if shoot_recoil > 0:
+        shoot_recoil -= dt
 
     if player_pos.y > DEATH_BELOW_Y:
         lives -= 1
@@ -223,14 +556,14 @@ while running:
     # Collision projectile-monstre
     for proj in projectiles[:]:
         for monster in monsters[:]:
-            if proj["pos"].distance_to(monster["pos"]) < projectile_radius + monster_radius:
+            if proj["pos"].distance_to(monster["pos"]) < projectile_radius + monster["radius"]:
                 monster["hp"] -= 1
                 monster["hit_flash"] = 0.2
                 
                 if monster["hp"] <= 0:
                     create_particles(monster["pos"], (255, 50, 50), 12)
                     monsters.remove(monster)
-                    score += 2 if monster["is_tank"] else 1
+                    score += 2 if monster["type"] == "tank" else 1
                 
                 if proj in projectiles:
                     projectiles.remove(proj)
@@ -242,14 +575,44 @@ while running:
         monsters.append(spawn_monster())
         monster_spawn_timer = MONSTER_SPAWN_COOLDOWN
 
-    # Monstres (mouvement et flash)
+    # Monstres (mouvement, gravité/vol et flash)
     for monster in monsters:
-        monster["pos"].x += monster["dir"] * 80 * dt
+        # Horizontal
+        monster["pos"].x += monster["dir"] * monster["speed"] * dt
         if monster["pos"].x < 50:
             monster["dir"] = 1
         if monster["pos"].x > 2500:
             monster["dir"] = -1
-        
+
+        if monster.get("type") == "flyer":
+            # Vol stationnaire/ondulant
+            monster["fly_phase"] += dt * 2.0
+            monster["pos"].y = monster["base_y"] + math.sin(monster["fly_phase"]) * 25
+        else:
+            # Gravité (marcheurs)
+            monster["vel_y"] += GRAVITY * dt
+            monster["pos"].y += monster["vel_y"] * dt
+
+            # Collision sol
+            feet_y = monster["pos"].y + monster["radius"]
+            if feet_y > GROUND_Y:
+                monster["pos"].y = GROUND_Y - monster["radius"]
+                monster["vel_y"] = 0
+
+            # Collision plateformes (atterrir par dessus)
+            if monster["vel_y"] >= 0:
+                monster_rect = pygame.Rect(int(monster["pos"].x - monster["radius"]),
+                                           int(monster["pos"].y - monster["radius"]),
+                                           monster["radius"]*2, monster["radius"]*2)
+                for plat in platforms:
+                    if monster_rect.colliderect(plat):
+                        plat_top = plat.top
+                        if feet_y - monster["vel_y"] * dt <= plat_top + 2:
+                            monster["pos"].y = plat_top - monster["radius"]
+                            monster["vel_y"] = 0
+                            break
+
+        # Flash dégâts
         if monster["hit_flash"] > 0:
             monster["hit_flash"] -= dt
 
@@ -257,7 +620,7 @@ while running:
     p_center = (int(player_pos.x), int(player_pos.y))
     if not is_invulnerable:
         for monster in monsters[:]:
-            if pygame.Vector2(p_center).distance_to(monster["pos"]) < head_radius + monster_radius:
+            if circle_rect_collision((monster["pos"].x, monster["pos"].y), monster["radius"], player_rect):
                 lives -= 1
                 is_invulnerable = True
                 invuln_timer = invuln_time
@@ -296,7 +659,7 @@ while running:
         pygame.draw.line(screen, color, (0, i), (SCREEN_WIDTH, i))
 
     # Sol avec texture
-    ground_rect = pygame.Rect(0 - camera_offset.x, GROUND_Y - camera_offset.y, 3000, 100)
+    ground_rect = pygame.Rect(GROUND_START_X - camera_offset.x, GROUND_Y - camera_offset.y, GROUND_END_X - GROUND_START_X, 100)
     pygame.draw.rect(screen, GROUND_COLOR, ground_rect)
     pygame.draw.rect(screen, (25, 100, 25), ground_rect, 3)
     for i in range(0, 3000, 50):
@@ -324,42 +687,96 @@ while running:
     pygame.draw.circle(screen, (30, 30, 30), knob_pos, 6)
     pygame.draw.circle(screen, (80, 80, 80), knob_pos, 3)
 
+    # Ombres
+    player_feet = player_pos.y + head_radius + body_height + leg_height
+    draw_shadow(player_pos.x, player_feet, head_radius + 12)
+    for monster in monsters:
+        draw_shadow(monster["pos"].x, monster["pos"].y + monster["radius"], monster["radius"])
+
     # Joueur
     p_center_screen = (int(player_pos.x - camera_offset.x), int(player_pos.y - camera_offset.y))
+    moving_now = keys[pygame.K_q] or keys[pygame.K_LEFT] or keys[pygame.K_d] or keys[pygame.K_RIGHT]
+    bob = math.sin(walk_cycle * 12) * 2 if moving_now else 0
+    render_center = (p_center_screen[0], p_center_screen[1] + int(bob))
 
     if not is_invulnerable or int(invuln_timer * 10) % 2 == 0:
         # Tête avec contour
-        pygame.draw.circle(screen, skin_color, p_center_screen, head_radius)
-        pygame.draw.circle(screen, (0, 0, 0), p_center_screen, head_radius, 3)
+        pygame.draw.circle(screen, skin_color, render_center, head_radius)
+        pygame.draw.circle(screen, (0, 0, 0), render_center, head_radius, 3)
         
         # Visage
         eye_offset = 7
-        pygame.draw.circle(screen, (0, 0, 0), 
-                          (p_center_screen[0] - eye_offset * direction, p_center_screen[1] - 5), 3)
+        eye_pos = (render_center[0] - eye_offset * direction, render_center[1] - 5)
+        if blink_close > 0:
+            pygame.draw.line(screen, (0, 0, 0), (int(eye_pos[0]-3), int(eye_pos[1])), (int(eye_pos[0]+3), int(eye_pos[1])), 2)
+        else:
+            pygame.draw.circle(screen, (0, 0, 0), (int(eye_pos[0]), int(eye_pos[1])), 3)
         pygame.draw.arc(screen, (0, 0, 0), 
-                       (p_center_screen[0] - head_radius, p_center_screen[1] - head_radius, 
+                       (render_center[0] - head_radius, render_center[1] - head_radius, 
                         head_radius*2, head_radius*2), 3.8, 5.0, 3)
 
-        # Corps
-        body_start = (p_center_screen[0], p_center_screen[1] + head_radius)
-        body_end = (p_center_screen[0], p_center_screen[1] + head_radius + body_height)
-        pygame.draw.line(screen, (0, 0, 0), body_start, body_end, 5)
+        # Cou + Torse (rectangle arrondi comme un t-shirt)
+        neck_width = 10
+        neck_height = 6
+        neck_rect = pygame.Rect(render_center[0] - neck_width//2, render_center[1] + head_radius - 2, neck_width, neck_height)
+        pygame.draw.rect(screen, HAND_COLOR, neck_rect, border_radius=3)
 
-        # Bras
-        arm_y = p_center_screen[1] + head_radius + 15
+        torso_width = 26
+        tilt = direction * (2 if moving_now else 0)
+        torso_rect = pygame.Rect(0, 0, torso_width, body_height)
+        torso_rect.centerx = render_center[0] + int(tilt)
+        torso_rect.top = render_center[1] + head_radius
+        pygame.draw.rect(screen, SHIRT_COLOR, torso_rect, border_radius=6)
+        pygame.draw.rect(screen, (0, 0, 0), torso_rect, 2, border_radius=6)
+        body_start = (torso_rect.centerx, torso_rect.top)
+        body_end = (torso_rect.centerx, torso_rect.bottom)
+
+        # Bras (recul au tir et pose en l'air) plus épais avec mains
+        base_arm_y = render_center[1] + head_radius + 16
+        arm_y = base_arm_y - (6 if not on_ground else 0)
         arm_angle = math.sin(walk_cycle * 10) * 15
         arm_offset = arm_length * math.cos(math.radians(arm_angle))
-        pygame.draw.line(screen, (0, 0, 0), 
-                        (p_center_screen[0] - arm_offset, arm_y), 
-                        (p_center_screen[0] + arm_offset, arm_y), 5)
+        if shoot_recoil > 0:
+            recoil_factor = 1.0 - min(1.0, shoot_recoil / 0.12) * 0.6
+            arm_offset *= recoil_factor
+            arm_y -= 2
+        if not on_ground:
+            arm_offset *= 0.6
+        left_hand = (int(render_center[0] - arm_offset), int(arm_y))
+        right_hand = (int(render_center[0] + arm_offset), int(arm_y))
+        pygame.draw.line(screen, (0, 0, 0), (left_hand[0], arm_y), (right_hand[0], arm_y), 6)
+        pygame.draw.circle(screen, HAND_COLOR, left_hand, 4)
+        pygame.draw.circle(screen, HAND_COLOR, right_hand, 4)
 
-        # Jambes
-        leg_offset = 15
-        leg_swing = math.sin(walk_cycle * 10) * 12
-        leg_left = (p_center_screen[0] - leg_offset, body_end[1] + leg_height + leg_swing)
-        leg_right = (p_center_screen[0] + leg_offset, body_end[1] + leg_height - leg_swing)
-        pygame.draw.line(screen, (0, 0, 0), body_end, leg_left, 5)
-        pygame.draw.line(screen, (0, 0, 0), body_end, leg_right, 5)
+        # Pistolet dans la main avant, orienté vers la souris
+        mouse_x, mouse_y = pygame.mouse.get_pos()
+        mouse_world = pygame.Vector2(mouse_x + camera_offset.x, mouse_y + camera_offset.y)
+        aim_vec = (mouse_world - pygame.Vector2(player_pos.x, player_pos.y))
+        if aim_vec.length_squared() == 0:
+            aim_dir = pygame.Vector2(direction, 0)
+        else:
+            aim_dir = aim_vec.normalize()
+        # Choisir la main avant selon l'orientation de visée
+        front_hand = right_hand if aim_dir.x >= 0 else left_hand
+        # Paramètres visuels du pistolet
+        grip_len, body_len, barrel_len = 8, 12, 10
+        thickness = 5
+        # Points du pistolet
+        base = pygame.Vector2(front_hand)
+        perp = pygame.Vector2(-aim_dir.y, aim_dir.x)
+        grip_end = base - perp * 4 + aim_dir * 2
+        body_end = base + aim_dir * body_len
+        barrel_end = body_end + aim_dir * barrel_len
+        # Dessin
+        pygame.draw.line(screen, (20, 20, 20), base, grip_end, thickness)  # poignée
+        pygame.draw.line(screen, (30, 30, 30), base, body_end, thickness)  # corps
+        pygame.draw.line(screen, (80, 80, 80), body_end, barrel_end, 3)    # canon
+
+        # (Jambes retirées)
+
+        # Cheveux simples
+        hair_rect = pygame.Rect(render_center[0] - head_radius + 4, render_center[1] - head_radius + 2, head_radius*2 - 8, head_radius)
+        pygame.draw.arc(screen, HAIR_COLOR, hair_rect, math.radians(200), math.radians(340), 4)
 
     # Projectiles avec traînée
     for proj in projectiles:
@@ -368,47 +785,60 @@ while running:
         pygame.draw.circle(screen, (0, 255, 0), proj_screen, projectile_radius)
         pygame.draw.circle(screen, (255, 255, 255), proj_screen, projectile_radius - 3)
 
-    # Monstres (normaux et tanks)
+    # Monstres (types: tank, fast, flyer)
     for monster in monsters:
         monster_screen = (int(monster["pos"].x - camera_offset.x), 
                          int(monster["pos"].y - camera_offset.y))
+        r = monster["radius"]
         
         # Couleur selon flash
-        monster_color = (255, 200, 200) if monster["hit_flash"] > 0 else (220, 20, 20)
-        
-        if monster["is_tank"]:
-            # Tank: corps plus gros
-            pygame.draw.circle(screen, monster_color, monster_screen, monster_radius + 5)
-            pygame.draw.circle(screen, (0, 0, 0), monster_screen, monster_radius + 5, 3)
-            
-            # Sac à dos
-            backpack_x = monster_screen[0] - 15
+        base_colors = {
+            "tank": (200, 40, 40),
+            "fast": (255, 140, 0),
+            "flyer": (100, 160, 255),
+        }
+        monster_color = (255, 220, 220) if monster["hit_flash"] > 0 else base_colors.get(monster["type"], (220, 20, 20))
+
+        if monster["type"] == "tank":
+            # Corps plus gros + contour
+            pygame.draw.circle(screen, monster_color, monster_screen, r)
+            pygame.draw.circle(screen, (0, 0, 0), monster_screen, r, 3)
+            # Sac à dos / blindage
+            backpack_x = monster_screen[0] - 18
             backpack_y = monster_screen[1]
-            backpack_rect = pygame.Rect(backpack_x - 10, backpack_y - 15, 20, 30)
+            backpack_rect = pygame.Rect(backpack_x - 12, backpack_y - 18, 24, 36)
             pygame.draw.rect(screen, (60, 40, 20), backpack_rect)
             pygame.draw.rect(screen, (0, 0, 0), backpack_rect, 2)
-            pygame.draw.circle(screen, (100, 80, 50), (backpack_x, backpack_y - 5), 5)
-            
-            # Yeux méchants
-            pygame.draw.circle(screen, (255, 255, 0), (monster_screen[0] - 8, monster_screen[1] - 5), 4)
-            pygame.draw.circle(screen, (255, 255, 0), (monster_screen[0] + 8, monster_screen[1] - 5), 4)
-            pygame.draw.circle(screen, (0, 0, 0), (monster_screen[0] - 8, monster_screen[1] - 5), 2)
-            pygame.draw.circle(screen, (0, 0, 0), (monster_screen[0] + 8, monster_screen[1] - 5), 2)
-            
-            # Indicateur HP
-            if monster["hp"] == 2:
-                pygame.draw.circle(screen, (0, 255, 0), (monster_screen[0], monster_screen[1] - 40), 5)
-                pygame.draw.circle(screen, (0, 255, 0), (monster_screen[0] + 12, monster_screen[1] - 40), 5)
-            else:
-                pygame.draw.circle(screen, (255, 165, 0), (monster_screen[0], monster_screen[1] - 40), 5)
-        else:
-            # Monstre normal
-            pygame.draw.circle(screen, monster_color, monster_screen, monster_radius)
-            pygame.draw.circle(screen, (0, 0, 0), monster_screen, monster_radius, 3)
-            
+            pygame.draw.circle(screen, (100, 80, 50), (backpack_x, backpack_y - 6), 5)
             # Yeux
-            pygame.draw.circle(screen, (0, 0, 0), (monster_screen[0] - 8, monster_screen[1] - 5), 4)
-            pygame.draw.circle(screen, (0, 0, 0), (monster_screen[0] + 8, monster_screen[1] - 5), 4)
+            pygame.draw.circle(screen, (255, 255, 0), (monster_screen[0] - 9, monster_screen[1] - 6), 4)
+            pygame.draw.circle(screen, (255, 255, 0), (monster_screen[0] + 9, monster_screen[1] - 6), 4)
+            pygame.draw.circle(screen, (0, 0, 0), (monster_screen[0] - 9, monster_screen[1] - 6), 2)
+            pygame.draw.circle(screen, (0, 0, 0), (monster_screen[0] + 9, monster_screen[1] - 6), 2)
+        elif monster["type"] == "fast":
+            # Petit rapide
+            pygame.draw.circle(screen, monster_color, monster_screen, r)
+            pygame.draw.circle(screen, (0, 0, 0), monster_screen, r, 3)
+            # Yeux plus rapprochés
+            pygame.draw.circle(screen, (0, 0, 0), (monster_screen[0] - 6, monster_screen[1] - 4), 3)
+            pygame.draw.circle(screen, (0, 0, 0), (monster_screen[0] + 6, monster_screen[1] - 4), 3)
+            # Traînée légère
+            pygame.draw.circle(screen, (255, 200, 120), (monster_screen[0] - monster["dir"]*r, monster_screen[1]), max(1, r//4))
+        else:  # flyer
+            # Corps volant avec ailes
+            pygame.draw.circle(screen, monster_color, monster_screen, r)
+            pygame.draw.circle(screen, (0, 0, 0), monster_screen, r, 3)
+            wing_span = r + 10
+            left_wing = [(monster_screen[0] - 2, monster_screen[1]),
+                         (monster_screen[0] - wing_span, monster_screen[1] - 6),
+                         (monster_screen[0] - wing_span + 6, monster_screen[1] + 6)]
+            right_wing = [(monster_screen[0] + 2, monster_screen[1]),
+                          (monster_screen[0] + wing_span, monster_screen[1] - 6),
+                          (monster_screen[0] + wing_span - 6, monster_screen[1] + 6)]
+            pygame.draw.polygon(screen, (180, 210, 255), left_wing)
+            pygame.draw.polygon(screen, (180, 210, 255), right_wing)
+            pygame.draw.polygon(screen, (0, 0, 0), left_wing, 2)
+            pygame.draw.polygon(screen, (0, 0, 0), right_wing, 2)
 
     # Particules
     for part in particles:
@@ -461,8 +891,10 @@ while running:
         screen.blit(sub_text, (SCREEN_WIDTH//2 - sub_text.get_width()//2, SCREEN_HEIGHT//2 + 20))
         screen.blit(score_final, (SCREEN_WIDTH//2 - score_final.get_width()//2, SCREEN_HEIGHT//2 + 70))
         pygame.display.flip()
-        pygame.time.delay(3000)
-        running = False
+        pygame.time.delay(1500)
+        # Retour au menu
+        game_state = "MENU"
+        victory = False
 
     if lives <= 0:
         overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
@@ -475,14 +907,12 @@ while running:
         screen.blit(over_text, (SCREEN_WIDTH//2 - over_text.get_width()//2, SCREEN_HEIGHT//2 - 60))
         screen.blit(score_final, (SCREEN_WIDTH//2 - score_final.get_width()//2, SCREEN_HEIGHT//2 + 20))
         pygame.display.flip()
-        pygame.time.delay(2000)
-        
+        pygame.time.delay(1500)
+        # Retour au menu
+        game_state = "MENU"
+        # Reset léger, le plein reset se fera quand on clique "Jouer"
         lives = 3
         score = 0
-        player_pos = spawn_point.copy()
-        player_vel_y = 0
-        camera_offset = pygame.Vector2(0, 0)
-        monsters = [spawn_monster() for _ in range(MAX_MONSTERS)]
         projectiles = []
         particles = []
 
