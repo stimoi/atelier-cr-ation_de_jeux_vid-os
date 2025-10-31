@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Ã‰diteur de niveaux</title>
+  <title>Éditeur de niveaux</title>
   <style>
     body { font-family: system-ui, Arial, sans-serif; margin: 0; display: grid; grid-template-columns: 360px 1fr; height: 100vh; }
     header { grid-column: 1 / -1; padding: 10px 16px; background: #222; color: #fff; display: flex; align-items: center; gap: 8px; }
@@ -21,9 +21,11 @@
     .platforms { display: flex; flex-direction: column; gap: 8px; max-height: 240px; overflow: auto; }
     .platform { display: grid; grid-template-columns: repeat(4, 1fr) 32px; gap: 6px; }
     .canvas-wrap { position: relative; height: calc(100vh - 60px); background: #eef6ff; }
-    canvas { width: 100%; height: 100%; display: block; background: linear-gradient(#7db3e8, #cfe9ff); }
-    .toolbar { position: absolute; top: 12px; left: 12px; display: flex; gap: 8px; background: rgba(255,255,255,0.9); padding: 8px; border-radius: 8px; }
+    canvas { width: 100%; height: 100%; display: block; background: linear-gradient(180deg, #7db3e8 0%, #cfe9ff 100%); }
+    .toolbar { position: absolute; top: 12px; left: 12px; display: flex; gap: 8px; background: rgba(255,255,255,0.9); padding: 8px 10px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,.08); }
     small.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #555; }
+    .tag { padding: 2px 6px; border-radius: 999px; font-size: 11px; border: 1px solid #ddd; }
+    .tag.enemy { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
   </style>
 </head>
 <body>
@@ -107,6 +109,13 @@
       <button id="addPlatformBtn">+ Ajouter une plateforme</button>
       <small class="mono">Astuce: cliquez dans la prÃ©visualisation pour ajouter rapidement (100x20).</small>
     </div>
+
+    <div class="section">
+      <h2>Ennemis <span class="tag enemy">danger</span></h2>
+      <div class="platforms" id="enemyList"></div>
+      <button id="addEnemyBtn">+ Ajouter un ennemi</button>
+      <small class="mono">Conseil: placez-les au-dessus du sol et des plateformes.</small>
+    </div>
   </div>
 
   <div class="canvas-wrap">
@@ -137,6 +146,9 @@
         { x: 1600, y: 200, w: 100, h: 20 },
         { x: 1750, y: 100, w: 100, h: 20 },
         { x: 1900, y: 60,  w: 500, h: 20 }
+      ],
+      enemies: [
+        { x: 500, y: 640, w: 28, h: 28 },
       ]
     };
 
@@ -156,7 +168,9 @@
       goalW: document.getElementById('goalW'),
       goalH: document.getElementById('goalH'),
       platformList: document.getElementById('platformList'),
+      enemyList: document.getElementById('enemyList'),
       addPlatformBtn: document.getElementById('addPlatformBtn'),
+      addEnemyBtn: document.getElementById('addEnemyBtn'),
       addLevelBtn: document.getElementById('addLevelBtn'),
       deleteLevelBtn: document.getElementById('deleteLevelBtn'),
       exportBtn: document.getElementById('exportBtn'),
@@ -214,10 +228,37 @@
         btn.onclick = () => { lvl.platforms.splice(idx,1); renderForm(); draw(); };
         els.platformList.appendChild(row);
       });
+
+      // Enemies list
+      els.enemyList.innerHTML = '';
+      (lvl.enemies || (lvl.enemies = [])).forEach((en, idx) => {
+        const row = document.createElement('div');
+        row.className = 'platform';
+        row.innerHTML = `
+          <input type="number" value="${en.x}" />
+          <input type="number" value="${en.y}" />
+          <input type="number" value="${en.w}" />
+          <input type="number" value="${en.h}" />
+          <button data-idx="${idx}">Ã—</button>
+        `;
+        const [x,y,w,h,btn] = row.querySelectorAll('input,button');
+        x.oninput = () => { en.x = +x.value; draw(); };
+        y.oninput = () => { en.y = +y.value; draw(); };
+        w.oninput = () => { en.w = +w.value; draw(); };
+        h.oninput = () => { en.h = +h.value; draw(); };
+        btn.onclick = () => { lvl.enemies.splice(idx,1); renderForm(); draw(); };
+        els.enemyList.appendChild(row);
+      });
     }
 
     els.addPlatformBtn.onclick = () => {
       data.levels[current].platforms.push({ x: 100, y: 100, w: 100, h: 20 });
+      renderForm();
+      draw();
+    };
+
+    els.addEnemyBtn.onclick = () => {
+      (data.levels[current].enemies || (data.levels[current].enemies = [])).push({ x: 200, y: 640, w: 28, h: 28 });
       renderForm();
       draw();
     };
@@ -318,10 +359,13 @@
       ctx.translate(scrollX, scrollY);
       ctx.scale(zoom, zoom);
       ctx.clearRect(-scrollX/zoom, -scrollY/zoom, w/zoom, h/zoom);
-      ctx.fillStyle = '#a9d3ff';
+      const g = ctx.createLinearGradient(0, -scrollY/zoom, 0, h/zoom - scrollY/zoom);
+      g.addColorStop(0, '#a9d3ff');
+      g.addColorStop(1, '#e6f2ff');
+      ctx.fillStyle = g;
       ctx.fillRect(-scrollX/zoom, -scrollY/zoom, w/zoom, h/zoom);
       const step = 50;
-      ctx.strokeStyle = '#cde5ff';
+      ctx.strokeStyle = '#d7eaff';
       ctx.lineWidth = 1;
       ctx.beginPath();
       for (let x = -scrollX/zoom % step; x < w/zoom; x += step) {
@@ -348,6 +392,9 @@
       // Ground
       ctx.fillStyle = '#2e8b57';
       ctx.fillRect(lvl.ground.start_x, lvl.ground.y, lvl.ground.end_x - lvl.ground.start_x, 100);
+      ctx.strokeStyle = '#1b5e3b';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(lvl.ground.start_x, lvl.ground.y, Math.max(1, lvl.ground.end_x - lvl.ground.start_x), 100);
 
       // Platforms
       ctx.fillStyle = '#654321';
@@ -357,15 +404,38 @@
         ctx.strokeRect(p.x, p.y, p.w, p.h);
       });
 
+      // Enemies
+      if (lvl.enemies && lvl.enemies.length) {
+        lvl.enemies.forEach(en => {
+          ctx.fillStyle = '#dc2626';
+          ctx.strokeStyle = '#7f1d1d';
+          ctx.lineWidth = 2;
+          ctx.fillRect(en.x, en.y, en.w, en.h);
+          ctx.strokeRect(en.x, en.y, en.w, en.h);
+          // eyes
+          ctx.fillStyle = '#fff';
+          ctx.fillRect(en.x + 6, en.y + 8, 4, 6);
+          ctx.fillRect(en.x + en.w - 10, en.y + 8, 4, 6);
+        });
+      }
+
       // Goal
       ctx.fillStyle = '#b8860b';
       ctx.fillRect(lvl.goal.x, lvl.goal.y, lvl.goal.w, lvl.goal.h);
+      ctx.strokeStyle = '#8b6508';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(lvl.goal.x, lvl.goal.y, lvl.goal.w, lvl.goal.h);
 
       // Spawn
       ctx.fillStyle = '#1f6feb';
       ctx.beginPath();
       ctx.arc(lvl.spawn.x, lvl.spawn.y, 10, 0, Math.PI * 2);
       ctx.fill();
+      ctx.strokeStyle = 'rgba(31,110,235,0.6)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(lvl.spawn.x, lvl.spawn.y, 14, 0, Math.PI * 2);
+      ctx.stroke();
 
       ctx.restore();
     }
