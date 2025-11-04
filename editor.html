@@ -7,13 +7,20 @@
   <style>
     * { box-sizing: border-box; }
     body { 
+      --sidebar-width: 380px;
       font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; 
       margin: 0; 
       display: grid; 
-      grid-template-columns: 380px 1fr; 
+      grid-template-columns: var(--sidebar-width) 8px 1fr; 
       height: 100vh; 
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       overflow: hidden;
+      transition: grid-template-columns 0.2s ease;
+    }
+    body.is-resizing {
+      cursor: col-resize;
+      user-select: none;
+      transition: none;
     }
     header { 
       grid-column: 1 / -1; 
@@ -152,6 +159,26 @@
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       overflow: hidden;
     }
+    .sidebar-resizer {
+      position: relative;
+      cursor: col-resize;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255,255,255,0.2);
+      transition: background 0.2s ease;
+    }
+    .sidebar-resizer::before {
+      content: '';
+      width: 3px;
+      height: 40px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.7);
+      box-shadow: 0 0 8px rgba(0,0,0,0.15);
+    }
+    .sidebar-resizer:hover {
+      background: rgba(255,255,255,0.35);
+    }
     canvas { 
       width: 100%; 
       height: 100%; 
@@ -183,6 +210,60 @@
       font-size: 12px;
       backdrop-filter: blur(10px);
       box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+      transition: opacity 0.6s ease, transform 0.6s ease;
+      opacity: 1;
+    }
+    .navigation-help.is-hidden {
+      opacity: 0;
+      transform: translateY(16px);
+      pointer-events: none;
+    }
+    .context-menu {
+      position: absolute;
+      min-width: 200px;
+      background: rgba(30, 58, 138, 0.95);
+      color: #fff;
+      border-radius: 12px;
+      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.35);
+      border: 1px solid rgba(148, 163, 184, 0.4);
+      backdrop-filter: blur(12px);
+      padding: 8px 0;
+      display: none;
+      z-index: 20;
+      overflow: hidden;
+      animation: fadeIn 0.18s ease;
+    }
+    .context-menu.visible {
+      display: block;
+    }
+    .context-menu button {
+      width: 100%;
+      background: transparent;
+      border: none;
+      color: inherit;
+      padding: 10px 18px;
+      text-align: left;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+    .context-menu button:hover {
+      background: rgba(255, 255, 255, 0.12);
+    }
+    .context-menu button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      background: transparent;
+    }
+    .context-menu button.context-danger {
+      color: #fecaca;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
     }
     small.mono { 
       font-family: 'SF Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; 
@@ -334,6 +415,8 @@
     </div>
   </div>
 
+  <div class="sidebar-resizer" id="sidebarResizer" title="Redimensionner"></div>
+
   <div class="canvas-wrap">
     <div class="toolbar">
       <small class="mono">🎮 Navigation: Flèches ou WASD</small>
@@ -354,35 +437,25 @@
       <div>• Molette: Zoom</div>
       <div>• Clic milieu + glisser: Panoramique</div>
       <div>• Clic gauche: Ajouter/déplacer</div>
-      <div>• Clic droit: Supprimer</div>
+      <div>• Clic droit: Menu contextuel</div>
     </div>
     <canvas id="view"></canvas>
+    <div class="context-menu" id="canvasContextMenu">
+      <button type="button" data-action="add-enemy">👾 Ajouter un ennemi</button>
+      <button type="button" data-action="set-spawn">🎯 Placer le spawn ici</button>
+      <button type="button" data-action="set-goal">🚪 Déplacer la porte ici</button>
+      <button type="button" data-action="delete-platform" class="context-danger">✖️ Supprimer la plateforme</button>
+    </div>
   </div>
 
   <script>
     const DEFAULT_LEVEL = {
-      name: 'Niveau 1',
-      ground: { y: 680, start_x: 0, end_x: 3000 },
-      spawn: { x: 683, y: 590 },
-      goal: { x: 2300, y: -30, w: 70, h: 110 },
-      platforms: [
-        { x: 100, y: 560, w: 200, h: 20 },
-        { x: 380, y: 480, w: 180, h: 20 },
-        { x: 620, y: 420, w: 160, h: 20 },
-        { x: 860, y: 360, w: 140, h: 20 },
-        { x: 1060, y: 300, w: 180, h: 20 },
-        { x: 1300, y: 200, w: 250, h: 20 },
-        { x: 1600, y: 600, w: 100, h: 20 },
-        { x: 1750, y: 500, w: 100, h: 20 },
-        { x: 1600, y: 400, w: 100, h: 20 },
-        { x: 1750, y: 300, w: 100, h: 20 },
-        { x: 1600, y: 200, w: 100, h: 20 },
-        { x: 1750, y: 100, w: 100, h: 20 },
-        { x: 1900, y: 60,  w: 500, h: 20 }
-      ],
-      enemies: [
-        { x: 500, y: 640, w: 28, h: 28, type: 'basic' },
-      ]
+      name: 'Niveau vide',
+      ground: { y: 0, start_x: 0, end_x: 10000 },
+      spawn: { x: 40, y: -40 },
+      goal: { x: 1000, y: -110, w: 70, h: 110 },
+      platforms: [],
+      enemies: []
     };
 
     let data = { levels: [ structuredClone(DEFAULT_LEVEL) ] };
@@ -408,8 +481,112 @@
       deleteLevelBtn: document.getElementById('deleteLevelBtn'),
       exportBtn: document.getElementById('exportBtn'),
       importFile: document.getElementById('importFile'),
-      view: document.getElementById('view')
+      view: document.getElementById('view'),
+      contextMenu: document.getElementById('canvasContextMenu'),
+      sidebar: document.querySelector('.sidebar'),
+      resizer: document.getElementById('sidebarResizer')
     };
+
+    const navigationHelp = document.querySelector('.navigation-help');
+    if (navigationHelp) {
+      setTimeout(() => navigationHelp.classList.add('is-hidden'), 10000);
+    }
+
+    const SIDEBAR_MIN_WIDTH = 260;
+    const SIDEBAR_MAX_WIDTH = 600;
+    let isResizingSidebar = false;
+
+    function clampSidebarWidth(width) {
+      return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, width));
+    }
+
+    function applySidebarWidth(width) {
+      document.body.style.setProperty('--sidebar-width', `${Math.round(width)}px`);
+      resize();
+    }
+
+    els.resizer?.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      hideContextMenu();
+      isResizingSidebar = true;
+      document.body.classList.add('is-resizing');
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isResizingSidebar) return;
+      const newWidth = clampSidebarWidth(e.clientX);
+      applySidebarWidth(newWidth);
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (!isResizingSidebar) return;
+      isResizingSidebar = false;
+      document.body.classList.remove('is-resizing');
+    });
+
+    const contextMenuState = {
+      visible: false,
+      clientX: 0,
+      clientY: 0,
+      worldX: 0,
+      worldY: 0,
+      hit: null
+    };
+
+    function hideContextMenu() {
+      if (!contextMenuState.visible) return;
+      contextMenuState.visible = false;
+      contextMenuState.hit = null;
+      els.contextMenu?.classList.remove('visible');
+    }
+
+    function showContextMenu(e, hitInfo) {
+      hideContextMenu();
+      if (!els.contextMenu) return;
+      const menu = els.contextMenu;
+      contextMenuState.visible = true;
+      const { px, py } = worldFromClient(e);
+      contextMenuState.clientX = e.clientX;
+      contextMenuState.clientY = e.clientY;
+      contextMenuState.worldX = px;
+      contextMenuState.worldY = py;
+      contextMenuState.hit = hitInfo;
+
+      const deleteBtn = menu.querySelector('[data-action="delete-platform"]');
+      if (deleteBtn) {
+        deleteBtn.disabled = !(hitInfo && hitInfo.type === 'platform');
+      }
+
+      menu.classList.add('visible');
+      menu.style.left = '0px';
+      menu.style.top = '0px';
+      const bounds = menu.getBoundingClientRect();
+      const containerRect = els.view.getBoundingClientRect();
+      const padding = 8;
+      const offsetX = e.clientX - containerRect.left;
+      const offsetY = e.clientY - containerRect.top;
+      const containerWidth = containerRect.width;
+      const containerHeight = containerRect.height;
+
+      let x = offsetX + 12;
+      let y = offsetY - bounds.height - 12;
+
+      const maxX = containerWidth - bounds.width - padding;
+      if (x > maxX) x = Math.max(padding, maxX);
+      if (x < padding) x = padding;
+
+      if (y < padding) {
+        const belowY = offsetY + 12;
+        if (belowY + bounds.height <= containerHeight - padding) {
+          y = belowY;
+        } else {
+          y = Math.max(padding, containerHeight - bounds.height - padding);
+        }
+      }
+
+      menu.style.left = `${x}px`;
+      menu.style.top = `${y}px`;
+    }
 
     function refreshLevelSelect() {
       els.levelSelect.innerHTML = '';
@@ -632,6 +809,7 @@
     window.addEventListener('resize', resize);
 
     els.view.addEventListener('wheel', (e) => {
+      hideContextMenu();
       if (e.ctrlKey) {
         // Zoom avec Ctrl + molette
         e.preventDefault();
@@ -693,22 +871,33 @@
       return null;
     }
 
+    function promptResizePlatform(platform) {
+      const largeur = prompt('Nouvelle largeur du bloc (px)', platform.w);
+      if (largeur === null) return;
+      const hauteur = prompt('Nouvelle hauteur du bloc (px)', platform.h);
+      if (hauteur === null) return;
+      const newWidth = parseFloat(largeur);
+      const newHeight = parseFloat(hauteur);
+      if (!Number.isFinite(newWidth) || newWidth <= 0 || !Number.isFinite(newHeight) || newHeight <= 0) {
+        alert('Valeurs invalides. Veuillez saisir des nombres positifs.');
+        return;
+      }
+      platform.w = doSnap(newWidth);
+      platform.h = doSnap(newHeight);
+      renderForm();
+      draw();
+    }
+
     els.view.addEventListener('mousedown', (e) => {
+      hideContextMenu();
       const btn = e.button; // 0: gauche, 1: milieu, 2: droit
       const lvl = data.levels[current];
       const { px, py } = worldFromClient(e);
       if (btn === 1) {
-        dragging = { type: 'pan', dx: e.clientX, dy: e.clientY };
+        dragging = { type: 'pan', dx: e.clientX, dy: e.clientY, moved: false };
         return;
       }
       if (btn === 2) {
-        // clic droit: delete plateforme sous la souris
-        const hit = hitTest(lvl, px, py);
-        if (hit?.type === 'platform') {
-          lvl.platforms.splice(hit.idx, 1);
-          renderForm();
-          draw();
-        }
         return;
       }
       // gauche: drag objet ou ajout si vide
@@ -716,11 +905,11 @@
       if (hit) {
         if (hit.type === 'platform') {
           const p = lvl.platforms[hit.idx];
-          dragging = { type: 'platform', idx: hit.idx, dx: px - p.x, dy: py - p.y };
+          dragging = { type: 'platform', idx: hit.idx, dx: px - p.x, dy: py - p.y, moved: false };
         } else if (hit.type === 'goal') {
-          dragging = { type: 'goal', dx: px - lvl.goal.x, dy: py - lvl.goal.y };
+          dragging = { type: 'goal', dx: px - lvl.goal.x, dy: py - lvl.goal.y, moved: false };
         } else if (hit.type === 'spawn') {
-          dragging = { type: 'spawn', dx: px - lvl.spawn.x, dy: py - lvl.spawn.y };
+          dragging = { type: 'spawn', dx: px - lvl.spawn.x, dy: py - lvl.spawn.y, moved: false };
         }
       } else {
         // ajout rapide si vide
@@ -732,9 +921,26 @@
       }
     });
 
-    els.view.addEventListener('contextmenu', (e) => e.preventDefault());
+    els.view.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const lvl = data.levels[current];
+      const { px, py } = worldFromClient(e);
+      const hit = hitTest(lvl, px, py);
+      showContextMenu(e, hit);
+    });
 
-    window.addEventListener('mouseup', () => { dragging = null; });
+    window.addEventListener('mouseup', () => {
+      if (!dragging) return;
+      const info = dragging;
+      dragging = null;
+      if (info.type === 'platform' && !info.moved) {
+        const lvl = data.levels[current];
+        const platform = lvl.platforms[info.idx];
+        if (platform) {
+          promptResizePlatform(platform);
+        }
+      }
+    });
 
     window.addEventListener('mousemove', (e) => {
       if (!dragging) return;
@@ -743,23 +949,83 @@
         scrollX += (e.clientX - dragging.dx);
         scrollY += (e.clientY - dragging.dy);
         dragging.dx = e.clientX; dragging.dy = e.clientY;
+        dragging.moved = true;
         draw();
         return;
       }
       const { px, py } = worldFromClient(e);
       if (dragging.type === 'platform') {
         const p = lvl.platforms[dragging.idx];
+        const prevX = p.x;
+        const prevY = p.y;
         p.x = doSnap(px - dragging.dx);
         p.y = doSnap(py - dragging.dy);
+        if (p.x !== prevX || p.y !== prevY) {
+          dragging.moved = true;
+        }
       } else if (dragging.type === 'goal') {
         lvl.goal.x = doSnap(px - dragging.dx);
         lvl.goal.y = doSnap(py - dragging.dy);
+        dragging.moved = true;
       } else if (dragging.type === 'spawn') {
         lvl.spawn.x = doSnap(px - dragging.dx);
         lvl.spawn.y = doSnap(py - dragging.dy);
+        dragging.moved = true;
       }
       renderForm();
       draw();
+    });
+
+    if (els.contextMenu) {
+      els.contextMenu.addEventListener('mousedown', (e) => e.stopPropagation());
+      els.contextMenu.addEventListener('click', (e) => {
+        const btn = e.target.closest('button');
+        if (!btn || btn.disabled) return;
+        const action = btn.dataset.action;
+        const lvl = data.levels[current];
+        const wx = doSnap(contextMenuState.worldX);
+        const wy = doSnap(contextMenuState.worldY);
+        switch (action) {
+          case 'add-enemy': {
+            const enemies = lvl.enemies || (lvl.enemies = []);
+            enemies.push({ x: wx, y: wy, w: 28, h: 28, type: 'basic' });
+            break;
+          }
+          case 'set-spawn': {
+            lvl.spawn.x = wx;
+            lvl.spawn.y = wy;
+            break;
+          }
+          case 'set-goal': {
+            lvl.goal.x = wx;
+            lvl.goal.y = wy;
+            break;
+          }
+          case 'delete-platform': {
+            if (contextMenuState.hit && contextMenuState.hit.type === 'platform') {
+              lvl.platforms.splice(contextMenuState.hit.idx, 1);
+            }
+            break;
+          }
+          default:
+            break;
+        }
+        renderForm();
+        draw();
+        hideContextMenu();
+      });
+    }
+
+    document.addEventListener('mousedown', (e) => {
+      if (!contextMenuState.visible) return;
+      if (!els.contextMenu || els.contextMenu.contains(e.target)) return;
+      hideContextMenu();
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        hideContextMenu();
+      }
     });
 
     function drawGrid() {
