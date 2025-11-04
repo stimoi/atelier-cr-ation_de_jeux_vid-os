@@ -1,7 +1,7 @@
 import pygame
 import random
 import math
-import jason
+import json
 import os
 
 # === Initialisation ===
@@ -23,6 +23,11 @@ GRAVITY = 800
 JUMP_FORCE = -600
 MOVE_SPEED = 300
 PROJECTILE_SPEED = 800
+STAMINA_MAX = 100
+STAMINA_JUMP_COST = 10
+STAMINA_REGEN_DELAY = 4.0
+STAMINA_REGEN_INTERVAL = 0.5
+STAMINA_REGEN_AMOUNT = 5
 FPS = 60
 MAX_MONSTERS = 3
 MONSTER_SPAWN_COOLDOWN = 2.0  # Secondes entre chaque spawn
@@ -148,6 +153,9 @@ blink_timer = 0.0
 blink_close = 0.0
 prev_on_ground = True
 shoot_recoil = 0.0
+stamina = STAMINA_MAX
+stamina_idle_timer = 0.0
+stamina_regen_timer = 0.0
 
 player_pos.y = GROUND_Y - (head_radius + body_height + leg_height)
 spawn_point = player_pos.copy()
@@ -328,6 +336,9 @@ while running:
                     projectiles = []
                     particles = []
                     monster_spawn_timer = 0.0
+                    stamina = STAMINA_MAX
+                    stamina_idle_timer = 0.0
+                    stamina_regen_timer = 0.0
                     game_state = "PLAYING"
                 elif quit_rect.collidepoint(event.pos):
                     running = False
@@ -383,6 +394,9 @@ while running:
                 projectiles = []
                 particles = []
                 monster_spawn_timer = 0.0
+                stamina = STAMINA_MAX
+                stamina_idle_timer = 0.0
+                stamina_regen_timer = 0.0
                 game_state = "PLAYING"
             elif game_state == "MENU" and event.key in (pygame.K_LEFT, pygame.K_RIGHT):
                 # Changer de niveau sélectionné dans le menu
@@ -464,6 +478,7 @@ while running:
     # --- LOGIQUE DU JEU ---
 
     # Mouvements
+    stamina_idle_timer += dt
     keys = pygame.key.get_pressed()
     moving = False
     if keys[pygame.K_q] or keys[pygame.K_LEFT]:
@@ -493,8 +508,11 @@ while running:
                 player_vel_y = 0
                 break
 
-    if keys[pygame.K_SPACE] and on_ground:
+    if keys[pygame.K_SPACE] and on_ground and stamina >= STAMINA_JUMP_COST:
         player_vel_y = JUMP_FORCE
+        stamina = max(0, stamina - STAMINA_JUMP_COST)
+        stamina_idle_timer = 0.0
+        stamina_regen_timer = 0.0
 
     player_vel_y += GRAVITY * dt
     player_pos.y += player_vel_y * dt
@@ -516,6 +534,16 @@ while running:
                     break
 
     player_pos.x = max(head_radius, player_pos.x)
+
+    if stamina_idle_timer >= STAMINA_REGEN_DELAY and stamina < STAMINA_MAX:
+        stamina_regen_timer += dt
+        while stamina_regen_timer >= STAMINA_REGEN_INTERVAL and stamina < STAMINA_MAX:
+            stamina = min(STAMINA_MAX, stamina + STAMINA_REGEN_AMOUNT)
+            stamina_regen_timer -= STAMINA_REGEN_INTERVAL
+        if stamina >= STAMINA_MAX:
+            stamina_regen_timer = 0.0
+    else:
+        stamina_regen_timer = 0.0
 
     if not prev_on_ground and on_ground and player_vel_y == 0:
         feet_x = player_pos.x
@@ -850,7 +878,7 @@ while running:
 
     # --- HUD ---
     # Panneau semi-transparent
-    hud_panel = pygame.Surface((300, 150), pygame.SRCALPHA)
+    hud_panel = pygame.Surface((300, 210), pygame.SRCALPHA)
     hud_panel.fill((0, 0, 0, 120))
     screen.blit(hud_panel, (10, 10))
 
@@ -867,9 +895,20 @@ while running:
         pygame.draw.polygon(screen, (255, 50, 50), 
                            [(heart_x - 15, 85), (heart_x, 100), (heart_x + 15, 85)])
 
+    stamina_label = small_font.render("Stamina", True, (180, 200, 255))
+    screen.blit(stamina_label, (30, 120))
+    stamina_bar_bg = pygame.Rect(30, 150, 240, 20)
+    pygame.draw.rect(screen, (40, 40, 40), stamina_bar_bg, border_radius=6)
+    stamina_ratio = stamina / STAMINA_MAX if STAMINA_MAX else 0
+    fill_width = int(stamina_bar_bg.width * max(0, min(1, stamina_ratio)))
+    if fill_width > 0:
+        stamina_bar_fill = pygame.Rect(stamina_bar_bg.left, stamina_bar_bg.top, fill_width, stamina_bar_bg.height)
+        pygame.draw.rect(screen, (70, 170, 255), stamina_bar_fill, border_radius=6)
+    pygame.draw.rect(screen, (120, 180, 255), stamina_bar_bg, 2, border_radius=6)
+
     if is_invulnerable:
         inv_text = small_font.render("⚡ INVULNÉRABLE", True, (255, 255, 0))
-        screen.blit(inv_text, (30, 120))
+        screen.blit(inv_text, (30, 180))
 
     # Indicateur de cooldown spawn
     if monster_spawn_timer > 0:
