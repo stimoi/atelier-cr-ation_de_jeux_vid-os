@@ -1,749 +1,1551 @@
-import pygame
-import random
-import math
-import webbrowser
-import json
-import os
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Éditeur de niveaux</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { 
+      --sidebar-width: 380px;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; 
+      margin: 0; 
+      display: grid; 
+      grid-template-columns: var(--sidebar-width) 8px 1fr; 
+      height: 100vh; 
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      overflow: hidden;
+      transition: grid-template-columns 0.2s ease;
+    }
+    .entity-editor {
+      position: absolute;
+      top: 24px;
+      right: 24px;
+      width: 280px;
+      padding: 18px;
+      border-radius: 16px;
+      background: rgba(15, 23, 42, 0.85);
+      box-shadow: 0 18px 40px rgba(15, 23, 42, 0.45);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      color: #e2e8f0;
+      display: none;
+      flex-direction: column;
+      gap: 14px;
+      z-index: 50;
+    }
+    .entity-editor.visible {
+      display: flex;
+    }
+    .entity-editor h3 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 700;
+      color: #f8fafc;
+    }
+    .entity-editor__header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .entity-editor__header button {
+      background: transparent;
+      border: none;
+      color: #94a3b8;
+      cursor: pointer;
+      font-size: 16px;
+      padding: 4px;
+    }
+    .entity-editor__header button:hover {
+      color: #e2e8f0;
+    }
+    .entity-editor label {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 13px;
+      color: #cbd5f5;
+    }
+    .entity-editor input,
+    .entity-editor select {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      border-radius: 10px;
+      padding: 10px 12px;
+      color: #f8fafc;
+      font-size: 14px;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    .entity-editor input:focus,
+    .entity-editor select:focus {
+      outline: none;
+      border-color: #38bdf8;
+      box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25);
+    }
+    .entity-editor__footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    .entity-editor__footer button {
+      border-radius: 999px;
+      padding: 8px 16px;
+      border: none;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .entity-editor__footer .btn-secondary {
+      background: rgba(148, 163, 184, 0.15);
+      color: #cbd5f5;
+    }
+    .entity-editor__footer .btn-secondary:hover {
+      background: rgba(148, 163, 184, 0.25);
+    }
+    .entity-editor__footer .btn-primary {
+      background: linear-gradient(135deg, #38bdf8, #0ea5e9);
+      color: #0f172a;
+    }
+    .entity-editor__footer .btn-primary:hover {
+      background: linear-gradient(135deg, #0ea5e9, #0284c7);
+    }
+    body.is-resizing {
+      cursor: col-resize;
+      user-select: none;
+      transition: none;
+    }
+    header { 
+      grid-column: 1 / -1; 
+      padding: 16px 20px; 
+      background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); 
+      color: #fff; 
+      display: flex; 
+      align-items: center; 
+      gap: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      border-bottom: 2px solid rgba(255,255,255,0.1);
+    }
+    header h1 { 
+      font-size: 22px; 
+      margin: 0; 
+      font-weight: 600;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    }
+    .sidebar { 
+      overflow: auto; 
+      background: rgba(255,255,255,0.95);
+      backdrop-filter: blur(10px);
+      border-right: 2px solid rgba(255,255,255,0.2); 
+      padding: 20px; 
+      display: flex; 
+      flex-direction: column; 
+      gap: 20px;
+      box-shadow: 4px 0 20px rgba(0,0,0,0.1);
+    }
+    .sidebar::-webkit-scrollbar { width: 8px; }
+    .sidebar::-webkit-scrollbar-track { background: rgba(0,0,0,0.05); border-radius: 4px; }
+    .sidebar::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); border-radius: 4px; }
+    .sidebar::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.3); }
+    .section { 
+      border: 2px solid rgba(102, 126, 234, 0.2); 
+      border-radius: 16px; 
+      padding: 18px; 
+      background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
+      box-shadow: 0 8px 25px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.8);
+      transition: all 0.3s ease;
+    }
+    .section:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 35px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.9);
+      border-color: rgba(102, 126, 234, 0.4);
+    }
+    .section h2 { 
+      margin: 0 0 12px 0; 
+      font-size: 18px; 
+      font-weight: 600;
+      color: #1e3a8a;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    }
+    label { 
+      display: block; 
+      font-size: 13px; 
+      color: #374151; 
+      margin-top: 10px; 
+      font-weight: 500;
+    }
+    input[type="number"], input[type="text"], select { 
+      width: 100%; 
+      box-sizing: border-box; 
+      padding: 10px 12px; 
+      margin-top: 6px;
+      border: 2px solid #e5e7eb;
+      border-radius: 10px;
+      font-size: 14px;
+      transition: all 0.2s ease;
+      background: #ffffff;
+    }
+    input[type="number"]:focus, input[type="text"]:focus, select:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+      transform: translateY(-1px);
+    }
+    button { 
+      padding: 10px 16px; 
+      border-radius: 10px; 
+      border: 2px solid transparent; 
+      background: linear-gradient(145deg, #f8fafc 0%, #e2e8f0 100%); 
+      cursor: pointer;
+      font-weight: 500;
+      font-size: 14px;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+    }
+    button.primary { 
+      background: linear-gradient(145deg, #667eea 0%, #764ba2 100%); 
+      color: white; 
+      border-color: transparent;
+    }
+    button.primary:hover {
+      background: linear-gradient(145deg, #5a67d8 0%, #6b46c1 100%);
+    }
+    button.danger { 
+      background: linear-gradient(145deg, #f56565 0%, #e53e3e 100%); 
+      color: white; 
+      border-color: transparent;
+    }
+    button.danger:hover {
+      background: linear-gradient(145deg, #e53e3e 0%, #c53030 100%);
+    }
+    .row { display: flex; gap: 10px; align-items: center; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .platforms { 
+      display: flex; 
+      flex-direction: column; 
+      gap: 10px; 
+      max-height: 280px; 
+      overflow: auto;
+      padding: 8px;
+      background: rgba(0,0,0,0.02);
+      border-radius: 8px;
+    }
+    .platforms::-webkit-scrollbar { width: 6px; }
+    .platforms::-webkit-scrollbar-track { background: rgba(0,0,0,0.05); border-radius: 3px; }
+    .platforms::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); border-radius: 3px; }
+    .platform { 
+      display: grid; 
+      grid-template-columns: repeat(4, 1fr) 40px; 
+      gap: 8px; 
+      padding: 8px;
+      background: rgba(255,255,255,0.8);
+      border-radius: 8px;
+      border: 1px solid rgba(0,0,0,0.1);
+    }
+    .canvas-wrap { 
+      position: relative; 
+      height: calc(100vh - 80px); 
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      overflow: hidden;
+    }
+    .sidebar-resizer {
+      position: relative;
+      cursor: col-resize;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255,255,255,0.2);
+      transition: background 0.2s ease;
+    }
+    .sidebar-resizer::before {
+      content: '';
+      width: 3px;
+      height: 40px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.7);
+      box-shadow: 0 0 8px rgba(0,0,0,0.15);
+    }
+    .sidebar-resizer:hover {
+      background: rgba(255,255,255,0.35);
+    }
+    canvas { 
+      width: 100%; 
+      height: 100%; 
+      display: block; 
+      background: linear-gradient(180deg, #87ceeb 0%, #e0f6ff 50%, #98fb98 100%);
+      cursor: crosshair;
+    }
+    .toolbar { 
+      position: absolute; 
+      top: 16px; 
+      left: 16px; 
+      display: flex; 
+      gap: 12px; 
+      background: rgba(255,255,255,0.95);
+      backdrop-filter: blur(10px);
+      padding: 12px 16px; 
+      border-radius: 16px; 
+      box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+      border: 2px solid rgba(255,255,255,0.3);
+    }
+    .navigation-help {
+      position: absolute;
+      bottom: 16px;
+      left: 16px;
+      background: rgba(30, 60, 114, 0.9);
+      color: white;
+      padding: 12px 16px;
+      border-radius: 12px;
+      font-size: 12px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+      transition: opacity 0.6s ease, transform 0.6s ease;
+      opacity: 1;
+    }
+    .navigation-help.is-hidden {
+      opacity: 0;
+      transform: translateY(16px);
+      pointer-events: none;
+    }
+    .context-menu {
+      position: absolute;
+      min-width: 200px;
+      background: rgba(30, 58, 138, 0.95);
+      color: #fff;
+      border-radius: 12px;
+      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.35);
+      border: 1px solid rgba(148, 163, 184, 0.4);
+      backdrop-filter: blur(12px);
+      padding: 8px 0;
+      display: none;
+      z-index: 20;
+      overflow: hidden;
+      animation: fadeIn 0.18s ease;
+    }
+    .context-menu.visible {
+      display: block;
+    }
+    .context-menu button {
+      width: 100%;
+      background: transparent;
+      border: none;
+      color: inherit;
+      padding: 10px 18px;
+      text-align: left;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+    .context-menu button:hover {
+      background: rgba(255, 255, 255, 0.12);
+    }
+    .context-menu button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      background: transparent;
+    }
+    .context-menu button.context-danger {
+      color: #fecaca;
+    }
+    .context-submenu {
+      margin-top: 6px;
+      padding-left: 14px;
+      border-left: 1px solid rgba(255,255,255,0.08);
+      display: none;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .context-submenu.visible {
+      display: flex;
+    }
+    .context-submenu button {
+      font-size: 13px;
+    }
+    .context-section {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin: 8px 0;
+    }
+    .context-section__title {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: rgba(226, 232, 240, 0.6);
+      padding-left: 4px;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    small.mono { 
+      font-family: 'SF Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; 
+      color: #64748b; 
+      font-size: 12px;
+    }
+    .tag { 
+      padding: 4px 8px; 
+      border-radius: 20px; 
+      font-size: 11px; 
+      font-weight: 600;
+      border: 1px solid transparent;
+    }
+    .tag.enemy { 
+      background: linear-gradient(145deg, #fee2e2 0%, #fecaca 100%); 
+      color: #991b1b; 
+      border-color: #fca5a5;
+    }
+    .list-headers { 
+      display: grid; 
+      gap: 8px; 
+      font-size: 12px; 
+      color: #6b7280; 
+      padding: 0 4px;
+      font-weight: 600;
+    }
+    .list-headers.platform { grid-template-columns: repeat(4, 1fr) 40px; }
+    .list-headers.enemy { grid-template-columns: repeat(4, 1fr) 1fr 40px; }
+    .list-headers span { font-weight: 700; }
+    .enemy-type { 
+      display: inline-block; 
+      width: 70px; 
+      text-align: center;
+      padding: 2px 6px;
+      border-radius: 12px;
+      font-size: 10px;
+      font-weight: 600;
+    }
+    .enemy-type.basic { background: linear-gradient(145deg, #fee2e2 0%, #fecaca 100%); color: #991b1b; }
+    .enemy-type.patrol { background: linear-gradient(145deg, #fed7aa 0%, #fdba74 100%); color: #9a3412; }
+    .enemy-type.shooter { background: linear-gradient(145deg, #dcfce7 0%, #bbf7d0 100%); color: #166534; }
+    .enemy-type.flyer { background: linear-gradient(145deg, #e0e7ff 0%, #c7d2fe 100%); color: #3730a3; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Éditeur de niveaux</h1>
+    <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
+      <input type="file" id="importFile" accept="application/json" />
+      <button class="primary" id="exportBtn">Exporter levels.json</button>
+    </div>
+  </header>
 
-# === Initialisation ===
-pygame.init()
-screen = pygame.display.set_mode((1366, 769))
-clock = pygame.time.Clock()
-font = pygame.font.SysFont(None, 48)
-small_font = pygame.font.SysFont(None, 32)
-title_font = pygame.font.SysFont(None, 96)
+  <div class="sidebar">
+    <div class="section">
+      <h2>Niveaux</h2>
+      <div class="row">
+        <select id="levelSelect" style="flex:1"></select>
+        <button id="addLevelBtn">Ajouter</button>
+        <button class="danger" id="deleteLevelBtn">Supprimer</button>
+      </div>
+      <label>Nom</label>
+      <input type="text" id="levelName" placeholder="Nom du niveau" />
+    </div>
 
-# === Constantes ===
-SCREEN_WIDTH, SCREEN_HEIGHT = screen.get_size()
-GROUND_Y = 680
-GRAVITY = 800
-JUMP_FORCE = -600
-MOVE_SPEED = 300
-PROJECTILE_SPEED = 800
-FPS = 60
-MAX_MONSTERS = 3
-MONSTER_SPAWN_COOLDOWN = 2.0
-DEATH_BELOW_Y = GROUND_Y + 1500
+    <div class="section">
+      <h2>Sol</h2>
+      <div class="grid-2">
+        <div>
+          <label>Y</label>
+          <input type="number" id="groundY" />
+        </div>
+        <div>
+          <label>Début X</label>
+          <input type="number" id="groundStart" />
+        </div>
+        <div>
+          <label>Fin X</label>
+          <input type="number" id="groundEnd" />
+        </div>
+      </div>
+    </div>
 
-# === États du jeu ===
-MENU = 0
-PLAYING = 1
-CREDITS = 2
-game_state = MENU
+    <div class="section">
+      <h2>Spawn</h2>
+      <div class="grid-2">
+        <div>
+          <label>X</label>
+          <input type="number" id="spawnX" />
+        </div>
+        <div>
+          <label>Y</label>
+          <input type="number" id="spawnY" />
+        </div>
+      </div>
+      <label>Position de départ</label>
+    </div>
 
-# === Caméra ===
-camera_offset = pygame.Vector2(0, 0)
-CAMERA_LAG = 0.05
+    <div class="section">
+      <h2>But (porte)</h2>
+      <div class="grid-2">
+        <div>
+          <label>X</label>
+          <input type="number" id="goalX" />
+        </div>
+        <div>
+          <label>Y</label>
+          <input type="number" id="goalY" />
+        </div>
+        <div>
+          <label>Largeur</label>
+          <input type="number" id="goalW" />
+        </div>
+        <div>
+          <label>Hauteur</label>
+          <input type="number" id="goalH" />
+        </div>
+      </div>
+      <label>Position de la porte</label>
+    </div>
 
-# === Couleurs améliorées ===
-SKY_COLOR = (70, 130, 180)
-GROUND_COLOR = (34, 139, 34)
-PLATFORM_COLOR = (101, 67, 33)
-PLATFORM_HIGHLIGHT = (139, 90, 43)
-DOOR_COLOR = (184, 134, 11)
-DOOR_FRAME = (139, 69, 19)
+    <div class="section">
+      <h2>Plateformes</h2>
+      <div class="list-headers platform">
+        <span>X</span>
+        <span>Y</span>
+        <span>Largeur</span>
+        <span>Hauteur</span>
+        <span></span>
+      </div>
+      <div class="platforms" id="platformList"></div>
+      <button id="addPlatformBtn">+ Ajouter une plateforme</button>
+      <small class="mono">Astuce: cliquez dans la prévisualisation pour ajouter rapidement (100x20).</small>
+    </div>
 
-# === Particules ===
-particles = []
+    <div class="section">
+      <h2>Ennemis <span class="tag enemy">danger</span></h2>
+      <div class="list-headers enemy">
+        <span>X</span>
+        <span>Y</span>
+        <span>Largeur</span>
+        <span>Hauteur</span>
+        <span>Type</span>
+        <span></span>
+      </div>
+      <div class="platforms" id="enemyList"></div>
+      <button id="addEnemyBtn">+ Ajouter un ennemi</button>
+      <small class="mono">Conseil: placez-les au-dessus du sol et des plateformes.</small>
+    </div>
+  </div>
 
-def create_particles(pos, color, count=8):
-    """Crée des particules d'explosion"""
-    for _ in range(count):
-        angle = random.uniform(0, 2 * math.pi)
-        speed = random.uniform(50, 150)
-        particles.append({
-            "pos": pygame.Vector2(pos),
-            "vel": pygame.Vector2(math.cos(angle) * speed, math.sin(angle) * speed),
-            "color": color,
-            "life": 1.0
-        })
+  <div class="sidebar-resizer" id="sidebarResizer" title="Redimensionner"></div>
 
-# === Boutons ===
-class Button:
-    def __init__(self, x, y, width, height, text, color, hover_color):
-        self.rect = pygame.Rect(x, y, width, height)
-        self.text = text
-        self.color = color
-        self.hover_color = hover_color
-        self.is_hovered = False
-    
-    def draw(self, surface):
-        color = self.hover_color if self.is_hovered else self.color
-        pygame.draw.rect(surface, color, self.rect, border_radius=15)
-        pygame.draw.rect(surface, (255, 255, 255), self.rect, 3, border_radius=15)
-        
-        text_surf = font.render(self.text, True, (255, 255, 255))
-        text_rect = text_surf.get_rect(center=self.rect.center)
-        surface.blit(text_surf, text_rect)
-    
-    def check_hover(self, pos):
-        self.is_hovered = self.rect.collidepoint(pos)
-        return self.is_hovered
-    
-    def is_clicked(self, pos):
-        return self.rect.collidepoint(pos)
+  <div class="canvas-wrap">
+    <div class="toolbar">
+      <small class="mono">🎮 Navigation: Flèches ou WASD</small>
+      <small class="mono">🔍 Zoom: Ctrl + molette</small>
+      <small class="mono" id="mouseInfo"></small>
+      <label class="mono" style="display:flex;align-items:center;gap:6px;margin-left:8px;">
+        <input type="checkbox" id="snapToggle" checked>
+        Snap
+      </label>
+      <label class="mono" style="display:flex;align-items:center;gap:6px;">
+        Pas
+        <input type="number" id="snapStep" value="10" min="1" style="width:64px;">
+      </label>
+    </div>
+    <div class="navigation-help">
+      <div><strong>🚀 Navigation Infinie</strong></div>
+      <div>• Flèches / WASD: Déplacer la vue</div>
+      <div>• Molette: Zoom</div>
+      <div>• Clic milieu + glisser: Panoramique</div>
+      <div>• Clic gauche: Ajouter/déplacer</div>
+      <div>• Clic droit: Menu contextuel</div>
+    </div>
+    <canvas id="view"></canvas>
+    <div class="context-menu" id="canvasContextMenu">
+      <button type="button" data-action="modify-menu">✏️ Modifier…</button>
+      <div class="context-submenu" id="contextModifyMenu">
+        <button type="button" data-action="modify-enemy">👾 Modifier le monstre</button>
+        <button type="button" data-action="modify-platform">⬛ Modifier la plateforme</button>
+      </div>
+      <hr />
+      <div class="context-section">
+        <div class="context-section__title">Ajouter / Retirer</div>
+        <button type="button" data-action="add-enemy">👾 Ajouter un ennemi</button>
+        <button type="button" data-action="delete-enemy" class="context-danger">🗑️ Supprimer l'ennemi</button>
+        <button type="button" data-action="delete-platform" class="context-danger">✖️ Supprimer la plateforme</button>
+      </div>
+      <hr />
+      <button type="button" data-action="set-spawn">🎯 Placer le spawn ici</button>
+      <button type="button" data-action="set-goal">🚪 Déplacer la porte ici</button>
+    </div>
+    <div class="entity-editor" id="entityEditor">
+      <div class="entity-editor__header">
+        <h3 id="entityEditorTitle">Modifier</h3>
+        <button type="button" id="entityEditorClose" aria-label="Fermer">✕</button>
+      </div>
+      <div class="entity-editor__body">
+        <label>
+          Position X
+          <input type="number" id="entityEditorX" />
+        </label>
+        <label>
+          Position Y
+          <input type="number" id="entityEditorY" />
+        </label>
+        <label>
+          Largeur
+          <input type="number" id="entityEditorWidth" min="1" />
+        </label>
+        <label>
+          Hauteur
+          <input type="number" id="entityEditorHeight" min="1" />
+        </label>
+        <label id="entityEditorTypeWrap">
+          Type d'ennemi
+          <select id="entityEditorType">
+            <option value="basic">basic</option>
+            <option value="patrol">patrol</option>
+            <option value="shooter">shooter</option>
+            <option value="flyer">flyer</option>
+          </select>
+        </label>
+      </div>
+      <div class="entity-editor__footer">
+        <button type="button" class="btn-secondary" id="entityEditorCancel">Annuler</button>
+        <button type="button" class="btn-primary" id="entityEditorSave">Sauvegarder</button>
+      </div>
+    </div>
+  </div>
 
-# Créer les boutons
-play_button = Button(SCREEN_WIDTH//2 - 150, SCREEN_HEIGHT//2 - 50, 300, 80, "JOUER", (100, 150, 255), (120, 170, 255))
-credits_button = Button(SCREEN_WIDTH//2 - 150, SCREEN_HEIGHT//2 + 60, 300, 80, "CRÉDITS", (255, 150, 100), (255, 170, 120))
-back_button = Button(50, SCREEN_HEIGHT - 100, 200, 60, "RETOUR", (200, 100, 100), (220, 120, 120))
-website_button = Button(SCREEN_WIDTH//2 - 200, SCREEN_HEIGHT - 150, 400, 70, "🌐 Visiter le site", (50, 150, 50), (70, 170, 70))
+  <script>
+    const DEFAULT_LEVEL = {
+      name: 'Niveau vide',
+      ground: { y: 0, start_x: 0, end_x: 10000 },
+      spawn: { x: 40, y: -40 },
+      goal: { x: 1000, y: -110, w: 70, h: 110 },
+      platforms: [],
+      enemies: []
+    };
 
-# === Joueur ===
-player_pos = pygame.Vector2(SCREEN_WIDTH / 2, GROUND_Y)
-head_radius = 20
-body_height = 40
-leg_height = 30
-arm_length = 25
-skin_color = (255, 220, 177)
-player_vel_y = 0
-direction = 1
-walk_cycle = 0
+    let data = { levels: [ structuredClone(DEFAULT_LEVEL) ] };
+    let current = 0;
 
-player_pos.y = GROUND_Y - (head_radius + body_height + leg_height)
-spawn_point = player_pos.copy()
+    const els = {
+      levelSelect: document.getElementById('levelSelect'),
+      levelName: document.getElementById('levelName'),
+      groundY: document.getElementById('groundY'),
+      groundStart: document.getElementById('groundStart'),
+      groundEnd: document.getElementById('groundEnd'),
+      spawnX: document.getElementById('spawnX'),
+      spawnY: document.getElementById('spawnY'),
+      goalX: document.getElementById('goalX'),
+      goalY: document.getElementById('goalY'),
+      goalW: document.getElementById('goalW'),
+      goalH: document.getElementById('goalH'),
+      platformList: document.getElementById('platformList'),
+      enemyList: document.getElementById('enemyList'),
+      addPlatformBtn: document.getElementById('addPlatformBtn'),
+      addEnemyBtn: document.getElementById('addEnemyBtn'),
+      addLevelBtn: document.getElementById('addLevelBtn'),
+      deleteLevelBtn: document.getElementById('deleteLevelBtn'),
+      exportBtn: document.getElementById('exportBtn'),
+      importFile: document.getElementById('importFile'),
+      view: document.getElementById('view'),
+      contextMenu: document.getElementById('canvasContextMenu'),
+      sidebar: document.querySelector('.sidebar'),
+      resizer: document.getElementById('sidebarResizer')
+    };
 
-# === Projectiles ===
-projectiles = []
-projectile_radius = 6
-
-# === Ennemis ===
-monster_radius = 25
-monster_spawn_timer = 0.0
-initial_monster_positions = []  # Positions initiales depuis le JSON
-
-def spawn_monster_at(x, y, m_type="basic"):
-    """Crée un monstre à une position spécifique avec un type donné"""
-    is_tank = (m_type == "tank")
-    return {
-        "pos": pygame.Vector2(x, y),
-        "vel_y": 0,
-        "dir": random.choice([-1, 1]),
-        "is_tank": is_tank,
-        "hp": 2 if is_tank else 1,
-        "hit_flash": 0.0
+    const navigationHelp = document.querySelector('.navigation-help');
+    if (navigationHelp) {
+      setTimeout(() => navigationHelp.classList.add('is-hidden'), 10000);
     }
 
-def spawn_monster_random():
-    """Crée un monstre à une position aléatoire (ancien système)"""
-    x = random.randint(100, 2500)
-    y = GROUND_Y - monster_radius
-    is_tank = random.random() < 0.2
-    return {
-        "pos": pygame.Vector2(x, y),
-        "vel_y": 0,
-        "dir": random.choice([-1, 1]),
-        "is_tank": is_tank,
-        "hp": 2 if is_tank else 1,
-        "hit_flash": 0.0
+    const SIDEBAR_MIN_WIDTH = 260;
+    const SIDEBAR_MAX_WIDTH = 600;
+    let isResizingSidebar = false;
+
+    function clampSidebarWidth(width) {
+      return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, width));
     }
 
-monsters = []
-
-# === Chargement des niveaux depuis level.json ===
-def load_levels():
-    """Charge les niveaux depuis level.json"""
-    levels_dir = os.path.dirname(__file__) if __file__ else "."
-    level_path = os.path.join(levels_dir, "level.json")
-    
-    default_level = {
-        "name": "Niveau 1",
-        "ground": {"y": 680, "start_x": 0, "end_x": 10000},
-        "spawn": {"x": 683, "y": 590},
-        "goal": {"x": 2300, "y": -30, "w": 70, "h": 110},
-        "platforms": [],
-        "enemies": []
+    function applySidebarWidth(width) {
+      document.body.style.setProperty('--sidebar-width', `${Math.round(width)}px`);
+      resize();
     }
-    
-    if not os.path.isfile(level_path):
-        return [default_level]
-    
-    try:
-        with open(level_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            if isinstance(data, dict) and isinstance(data.get("levels"), list) and data["levels"]:
-                return data["levels"]
-    except Exception as e:
-        print(f"Erreur lors du chargement de level.json: {e}")
-    
-    return [default_level]
 
-levels = load_levels()
-selected_level_idx = 0
+    els.resizer?.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      hideContextMenu();
+      isResizingSidebar = true;
+      document.body.classList.add('is-resizing');
+    });
 
-# === Plateformes ===
-platforms = []
-goal_rect = pygame.Rect(0, 0, 0, 0)
+    window.addEventListener('mousemove', (e) => {
+      if (!isResizingSidebar) return;
+      const newWidth = clampSidebarWidth(e.clientX);
+      applySidebarWidth(newWidth);
+    });
 
-def apply_level(level):
-    """Applique les paramètres d'un niveau"""
-    global GROUND_Y, platforms, goal_rect, spawn_point, initial_monster_positions
-    
-    # Sol
-    ground_data = level.get("ground", {})
-    GROUND_Y = int(ground_data.get("y", 680))
-    
-    # Plateformes
-    platforms = [
-        pygame.Rect(int(p.get("x", 0)), int(p.get("y", 0)), 
-                   int(p.get("w", 100)), int(p.get("h", 20)))
-        for p in level.get("platforms", [])
-    ]
-    
-    # Porte/objectif
-    goal_data = level.get("goal", {})
-    goal_rect.x = int(goal_data.get("x", 2300))
-    goal_rect.y = int(goal_data.get("y", -30))
-    goal_rect.w = int(goal_data.get("w", 70))
-    goal_rect.h = int(goal_data.get("h", 110))
-    
-    # Spawn du joueur
-    spawn_data = level.get("spawn", {})
-    spawn_point.update(
-        float(spawn_data.get("x", SCREEN_WIDTH / 2)),
-        float(spawn_data.get("y", GROUND_Y - (head_radius + body_height + leg_height)))
-    )
-    
-    # Positions initiales des ennemis
-    initial_monster_positions = []
-    for enemy in level.get("enemies", []):
-        initial_monster_positions.append({
-            "x": int(enemy.get("x", 200)),
-            "y": int(enemy.get("y", GROUND_Y - monster_radius)),
-            "type": enemy.get("type", "basic")
-        })
+    window.addEventListener('mouseup', () => {
+      if (!isResizingSidebar) return;
+      isResizingSidebar = false;
+      document.body.classList.remove('is-resizing');
+    });
 
-# Appliquer le niveau initial
-apply_level(levels[selected_level_idx])
+    const contextMenuState = {
+      visible: false,
+      clientX: 0,
+      clientY: 0,
+      worldX: 0,
+      worldY: 0,
+      hit: null
+    };
 
-# === Score, Vies, Victoire ===
-score = 0
-lives = 3
-invuln_time = 1.5
-invuln_timer = 0.0
-is_invulnerable = False
-victory = False
+    function hideContextMenu() {
+      if (!contextMenuState.visible) return;
+      contextMenuState.visible = false;
+      contextMenuState.hit = null;
+      els.contextMenu?.classList.remove('visible');
+      const submenu = els.contextMenu?.querySelector('.context-submenu');
+      if (submenu) submenu.classList.remove('visible');
+    }
 
-def reset_game():
-    """Réinitialise le jeu"""
-    global player_pos, player_vel_y, score, lives, victory, camera_offset, monsters
-    global projectiles, particles, monster_spawn_timer, is_invulnerable, invuln_timer
-    
-    player_pos = spawn_point.copy()
-    player_vel_y = 0
-    score = 0
-    lives = 3
-    victory = False
-    camera_offset = pygame.Vector2(0, 0)
-    
-    # Créer les monstres aux positions initiales du niveau
-    monsters = []
-    for pos_data in initial_monster_positions:
-        monsters.append(spawn_monster_at(pos_data["x"], pos_data["y"], pos_data["type"]))
-    
-    projectiles = []
-    particles = []
-    monster_spawn_timer = 0
-    is_invulnerable = False
-    invuln_timer = 0
+    function showContextMenu(e, hitInfo) {
+      hideContextMenu();
+      if (!els.contextMenu) return;
+      const menu = els.contextMenu;
+      contextMenuState.visible = true;
+      const { px, py } = worldFromClient(e);
+      contextMenuState.clientX = e.clientX;
+      contextMenuState.clientY = e.clientY;
+      contextMenuState.worldX = px;
+      contextMenuState.worldY = py;
+      contextMenuState.hit = hitInfo;
 
-def draw_menu():
-    """Dessine le menu principal"""
-    # Fond dégradé animé
-    for i in range(SCREEN_HEIGHT):
-        color = (
-            int(70 + 30 * math.sin(i * 0.01 + pygame.time.get_ticks() * 0.001)),
-            int(130 + 50 * math.cos(i * 0.015 + pygame.time.get_ticks() * 0.001)),
-            int(180 + 50 * math.sin(i * 0.02 + pygame.time.get_ticks() * 0.001))
-        )
-        pygame.draw.line(screen, color, (0, i), (SCREEN_WIDTH, i))
-    
-    # Titre
-    title_text = title_font.render("JEU DE PLATEFORME", True, (255, 255, 255))
-    title_shadow = title_font.render("JEU DE PLATEFORME", True, (0, 0, 0))
-    screen.blit(title_shadow, (SCREEN_WIDTH//2 - title_text.get_width()//2 + 4, 104))
-    screen.blit(title_text, (SCREEN_WIDTH//2 - title_text.get_width()//2, 100))
-    
-    # Sous-titre
-    subtitle = font.render("Les Mardis de l'Engagement", True, (255, 215, 0))
-    screen.blit(subtitle, (SCREEN_WIDTH//2 - subtitle.get_width()//2, 200))
-    
-    # Boutons
-    mouse_pos = pygame.mouse.get_pos()
-    play_button.check_hover(mouse_pos)
-    credits_button.check_hover(mouse_pos)
-    play_button.draw(screen)
-    credits_button.draw(screen)
-    
-    # Instructions
-    info_text = small_font.render("Déplacements: Q/D ou Flèches | Saut: ESPACE | Tir: Clic Souris", True, (255, 255, 255))
-    screen.blit(info_text, (SCREEN_WIDTH//2 - info_text.get_width()//2, SCREEN_HEIGHT - 50))
+      const deletePlatformBtn = menu.querySelector('[data-action="delete-platform"]');
+      if (deletePlatformBtn) {
+        deletePlatformBtn.disabled = !(hitInfo && hitInfo.type === 'platform');
+      }
+      const modifyBtn = menu.querySelector('[data-action="modify-menu"]');
+      if (modifyBtn) {
+        modifyBtn.disabled = !(hitInfo && (hitInfo.type === 'enemy' || hitInfo.type === 'platform'));
+      }
+      const submenu = menu.querySelector('.context-submenu');
+      if (submenu) {
+        submenu.classList.remove('visible');
+      }
+      const modifyEnemyBtn = menu.querySelector('[data-action="modify-enemy"]');
+      if (modifyEnemyBtn) {
+        modifyEnemyBtn.disabled = !(hitInfo && hitInfo.type === 'enemy');
+      }
+      const deleteEnemyBtn = menu.querySelector('[data-action="delete-enemy"]');
+      if (deleteEnemyBtn) {
+        deleteEnemyBtn.disabled = !(hitInfo && hitInfo.type === 'enemy');
+      }
+      const modifyPlatformBtn = menu.querySelector('[data-action="modify-platform"]');
+      if (modifyPlatformBtn) {
+        modifyPlatformBtn.disabled = !(hitInfo && hitInfo.type === 'platform');
+      }
 
-def draw_credits():
-    """Dessine l'écran des crédits"""
-    # Fond
-    for i in range(SCREEN_HEIGHT):
-        color = (
-            int(50 + 20 * math.sin(i * 0.01)),
-            int(80 + 30 * math.cos(i * 0.015)),
-            int(120 + 40 * math.sin(i * 0.02))
-        )
-        pygame.draw.line(screen, color, (0, i), (SCREEN_WIDTH, i))
-    
-    # Titre
-    title = title_font.render("CRÉDITS", True, (255, 215, 0))
-    screen.blit(title, (SCREEN_WIDTH//2 - title.get_width()//2, 50))
-    
-    # Cadre de crédits
-    credits_box = pygame.Rect(SCREEN_WIDTH//2 - 400, 180, 800, 400)
-    pygame.draw.rect(screen, (255, 255, 255, 30), credits_box, border_radius=20)
-    pygame.draw.rect(screen, (255, 215, 0), credits_box, 3, border_radius=20)
-    
-    # Texte des crédits
-    y_offset = 220
-    credits_title = font.render("Développé par:", True, (255, 255, 255))
-    screen.blit(credits_title, (SCREEN_WIDTH//2 - credits_title.get_width()//2, y_offset))
-    
-    y_offset += 60
-    team_members = ["Antoine", "Isaac", "Léo", "Mathis", "Samuel"]
-    for i, member in enumerate(team_members):
-        color = [
-            (255, 100, 100),
-            (100, 255, 100),
-            (100, 100, 255),
-            (255, 255, 100),
-            (255, 100, 255)
-        ][i]
-        member_text = font.render(f"• {member}", True, color)
-        screen.blit(member_text, (SCREEN_WIDTH//2 - member_text.get_width()//2, y_offset))
-        y_offset += 50
-    
-    # Projet
-    y_offset += 20
-    project_text = small_font.render("Projet: Les Mardis de l'Engagement", True, (200, 200, 200))
-    screen.blit(project_text, (SCREEN_WIDTH//2 - project_text.get_width()//2, y_offset))
-    
-    y_offset += 40
-    tech_text = small_font.render("Créé avec Python & Pygame", True, (200, 200, 200))
-    screen.blit(tech_text, (SCREEN_WIDTH//2 - tech_text.get_width()//2, y_offset))
-    
-    # Boutons
-    mouse_pos = pygame.mouse.get_pos()
-    website_button.check_hover(mouse_pos)
-    back_button.check_hover(mouse_pos)
-    website_button.draw(screen)
-    back_button.draw(screen)
+      menu.classList.add('visible');
+      menu.style.left = '0px';
+      menu.style.top = '0px';
+      const bounds = menu.getBoundingClientRect();
+      const containerRect = els.view.getBoundingClientRect();
+      const padding = 8;
+      const offsetX = e.clientX - containerRect.left;
+      const offsetY = e.clientY - containerRect.top;
+      const containerWidth = containerRect.width;
+      const containerHeight = containerRect.height;
 
-# === Boucle principale ===
-running = True
-dt = 0
+      let x = offsetX + 12;
+      let y = offsetY - bounds.height - 12;
 
-while running:
-    mouse_pos = pygame.mouse.get_pos()
-    
-    # Événements
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT or (
-            event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
-            running = False
-        
-        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if game_state == MENU:
-                if play_button.is_clicked(mouse_pos):
-                    game_state = PLAYING
-                    reset_game()
-                elif credits_button.is_clicked(mouse_pos):
-                    game_state = CREDITS
-            
-            elif game_state == CREDITS:
-                if back_button.is_clicked(mouse_pos):
-                    game_state = MENU
-                elif website_button.is_clicked(mouse_pos):
-                    webbrowser.open('http://zyrahost.fr/mardi')
-            
-            elif game_state == PLAYING and not victory:
-                # Tir vers la souris
-                mouse_world_x = mouse_pos[0] + camera_offset.x
-                mouse_world_y = mouse_pos[1] + camera_offset.y
-                
-                dx = mouse_world_x - player_pos.x
-                dy = mouse_world_y - player_pos.y
-                distance = math.sqrt(dx**2 + dy**2)
-                
-                if distance > 0:
-                    dir_x = dx / distance
-                    dir_y = dy / distance
-                    
-                    proj_x = player_pos.x + dir_x * (head_radius + 10)
-                    proj_y = player_pos.y + dir_y * (head_radius + 10)
-                    
-                    projectiles.append({
-                        "pos": pygame.Vector2(proj_x, proj_y),
-                        "vel": pygame.Vector2(dir_x * PROJECTILE_SPEED, dir_y * PROJECTILE_SPEED)
-                    })
+      const maxX = containerWidth - bounds.width - padding;
+      if (x > maxX) x = Math.max(padding, maxX);
+      if (x < padding) x = padding;
 
-    # --- AFFICHAGE SELON L'ÉTAT ---
-    if game_state == MENU:
-        draw_menu()
-    
-    elif game_state == CREDITS:
-        draw_credits()
-    
-    elif game_state == PLAYING:
-        # --- LOGIQUE DU JEU ---
-        
-        # Mouvements
-        keys = pygame.key.get_pressed()
-        moving = False
-        if keys[pygame.K_q] or keys[pygame.K_LEFT]:
-            player_pos.x -= MOVE_SPEED * dt
-            direction = -1
-            moving = True
-        if keys[pygame.K_d] or keys[pygame.K_RIGHT]:
-            player_pos.x += MOVE_SPEED * dt
-            direction = 1
-            moving = True
-        if moving:
-            walk_cycle += 10 * dt
-        else:
-            walk_cycle = 0
+      if (y < padding) {
+        const belowY = offsetY + 12;
+        if (belowY + bounds.height <= containerHeight - padding) {
+          y = belowY;
+        } else {
+          y = Math.max(padding, containerHeight - bounds.height - padding);
+        }
+      }
 
-        # Détection sol/plateforme joueur
-        feet_y = player_pos.y + head_radius + body_height + leg_height
-        on_ground = False
-        if feet_y >= GROUND_Y - 0.1:
-            on_ground = True
-        else:
-            for plat in platforms:
-                if plat.left - 5 < player_pos.x < plat.right + 5 and abs(feet_y - plat.top) <= 6:
-                    on_ground = True
-                    player_pos.y = plat.top - (head_radius + body_height + leg_height)
-                    player_vel_y = 0
-                    break
+      menu.style.left = `${x}px`;
+      menu.style.top = `${y}px`;
+    }
 
-        if keys[pygame.K_SPACE] and on_ground:
-            player_vel_y = JUMP_FORCE
+    function refreshLevelSelect() {
+      els.levelSelect.innerHTML = '';
+      data.levels.forEach((lvl, i) => {
+        const opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = `${i+1}. ${lvl.name || 'Sans nom'}`;
+        els.levelSelect.appendChild(opt);
+      });
+      els.levelSelect.value = String(current);
+    }
 
-        player_vel_y += GRAVITY * dt
-        player_pos.y += player_vel_y * dt
+    function bindValue(input, getter, setter) {
+      input.value = getter();
+      input.oninput = () => { setter(Number.isFinite(+input.value) ? +input.value : input.value); draw(); };
+    }
 
-        feet_y = player_pos.y + head_radius + body_height + leg_height
-        if feet_y > GROUND_Y:
-            player_pos.y = GROUND_Y - (head_radius + body_height + leg_height)
-            player_vel_y = 0
+    function renderForm() {
+      const lvl = data.levels[current];
+      els.levelName.value = lvl.name || '';
+      bindValue(els.groundY, () => lvl.ground.y, v => lvl.ground.y = v);
+      bindValue(els.groundStart, () => lvl.ground.start_x, v => lvl.ground.start_x = v);
+      bindValue(els.groundEnd, () => lvl.ground.end_x, v => lvl.ground.end_x = v);
+      bindValue(els.spawnX, () => lvl.spawn.x, v => lvl.spawn.x = v);
+      bindValue(els.spawnY, () => lvl.spawn.y, v => lvl.spawn.y = v);
+      bindValue(els.goalX, () => lvl.goal.x, v => lvl.goal.x = v);
+      bindValue(els.goalY, () => lvl.goal.y, v => lvl.goal.y = v);
+      bindValue(els.goalW, () => lvl.goal.w, v => lvl.goal.w = v);
+      bindValue(els.goalH, () => lvl.goal.h, v => lvl.goal.h = v);
 
-        player_rect = pygame.Rect(int(player_pos.x - head_radius), int(player_pos.y - head_radius), 
-                                  head_radius*2, head_radius*2 + body_height + leg_height)
-        if player_vel_y >= 0:
-            for plat in platforms:
-                if player_rect.colliderect(plat):
-                    plat_top = plat.top
-                    if feet_y - player_vel_y * dt <= plat_top:
-                        player_pos.y = plat_top - (head_radius + body_height + leg_height)
-                        player_vel_y = 0
-                        break
+      els.levelName.oninput = () => { lvl.name = els.levelName.value; refreshLevelSelect(); };
 
-        player_pos.x = max(head_radius, player_pos.x)
+      els.platformList.innerHTML = '';
+      lvl.platforms.forEach((p, idx) => {
+        const row = document.createElement('div');
+        row.className = 'platform';
+        row.innerHTML = `
+          <input type="number" value="${p.x}" />
+          <input type="number" value="${p.y}" />
+          <input type="number" value="${p.w}" />
+          <input type="number" value="${p.h}" />
+          <button data-idx="${idx}">Ã—</button>
+        `;
+        const [x,y,w,h,btn] = row.querySelectorAll('input,button');
+        x.oninput = () => { p.x = +x.value; draw(); };
+        y.oninput = () => { p.y = +y.value; draw(); };
+        w.oninput = () => { p.w = +w.value; draw(); };
+        h.oninput = () => { p.h = +h.value; draw(); };
+        btn.onclick = () => { lvl.platforms.splice(idx,1); renderForm(); draw(); };
+        els.platformList.appendChild(row);
+      });
 
-        if player_pos.y > DEATH_BELOW_Y:
-            lives -= 1
-            is_invulnerable = True
-            invuln_timer = invuln_time
-            player_pos = spawn_point.copy()
-            player_vel_y = 0
-            create_particles(player_pos, (255, 100, 100), 15)
+      els.enemyList.innerHTML = '';
+      (lvl.enemies || (lvl.enemies = [])).forEach((en, idx) => {
+        const row = document.createElement('div');
+        row.className = 'platform';
+        row.style.gridTemplateColumns = 'repeat(4, 1fr) 1fr 32px';
+        row.innerHTML = `
+          <input type="number" value="${en.x}" />
+          <input type="number" value="${en.y}" />
+          <input type="number" value="${en.w}" />
+          <input type="number" value="${en.h}" />
+          <select>
+            <option value="basic">basic</option>
+            <option value="patrol">patrol</option>
+            <option value="shooter">shooter</option>
+            <option value="flyer">flyer</option>
+          </select>
+          <button data-idx="${idx}">Ã—</button>
+        `;
+        const inputs = row.querySelectorAll('input,select,button');
+        const x = inputs[0];
+        const y = inputs[1];
+        const w = inputs[2];
+        const h = inputs[3];
+        const typeSel = inputs[4];
+        const btn = inputs[5];
+        x.oninput = () => { en.x = +x.value; draw(); };
+        y.oninput = () => { en.y = +y.value; draw(); };
+        w.oninput = () => { en.w = +w.value; draw(); };
+        h.oninput = () => { en.h = +h.value; draw(); };
+        typeSel.value = en.type || 'basic';
+        typeSel.onchange = () => { en.type = typeSel.value; draw(); };
+        btn.onclick = () => { lvl.enemies.splice(idx,1); renderForm(); draw(); };
+        els.enemyList.appendChild(row);
+      });
+    }
 
-        # Caméra
-        target_x = player_pos.x - SCREEN_WIDTH // 2
-        target_y = player_pos.y - SCREEN_HEIGHT // 2
-        camera_offset.x += (target_x - camera_offset.x) * CAMERA_LAG
-        camera_offset.y += (target_y - camera_offset.y) * CAMERA_LAG
+    els.addPlatformBtn.onclick = () => {
+      data.levels[current].platforms.push({ x: 100, y: 100, w: 100, h: 20 });
+      renderForm();
+      draw();
+    };
 
-        # Projectiles
-        for proj in projectiles[:]:
-            proj["pos"] += proj["vel"] * dt
-            if (proj["pos"].x < camera_offset.x - 200 or proj["pos"].x > camera_offset.x + SCREEN_WIDTH + 200 or
-                proj["pos"].y < camera_offset.y - 200 or proj["pos"].y > camera_offset.y + SCREEN_HEIGHT + 200):
-                projectiles.remove(proj)
+    els.addEnemyBtn.onclick = () => {
+      (data.levels[current].enemies || (data.levels[current].enemies = [])).push({ x: 200, y: 640, w: 28, h: 28, type: 'basic' });
+      renderForm();
+      draw();
+    };
 
-        # Collision projectile-monstre
-        for proj in projectiles[:]:
-            for monster in monsters[:]:
-                if proj["pos"].distance_to(monster["pos"]) < projectile_radius + monster_radius:
-                    monster["hp"] -= 1
-                    monster["hit_flash"] = 0.2
-                    
-                    if monster["hp"] <= 0:
-                        create_particles(monster["pos"], (255, 50, 50), 12)
-                        monsters.remove(monster)
-                        score += 2 if monster["is_tank"] else 1
-                    
-                    if proj in projectiles:
-                        projectiles.remove(proj)
-                    break
+    els.addLevelBtn.onclick = () => {
+      data.levels.push(structuredClone(DEFAULT_LEVEL));
+      current = data.levels.length - 1;
+      refreshLevelSelect();
+      renderForm();
+      draw();
+    };
 
-        # Spawn avec cooldown (respawn aléatoire après les monstres initiaux)
-        monster_spawn_timer -= dt
-        if monster_spawn_timer <= 0 and len(monsters) < MAX_MONSTERS:
-            monsters.append(spawn_monster_random())
-            monster_spawn_timer = MONSTER_SPAWN_COOLDOWN
+    els.deleteLevelBtn.onclick = () => {
+      if (data.levels.length <= 1) return;
+      data.levels.splice(current, 1);
+      current = Math.max(0, current - 1);
+      refreshLevelSelect();
+      renderForm();
+      draw();
+    };
 
-        # Monstres (mouvement, gravité et flash)
-        for monster in monsters:
-            # Mouvement horizontal
-            monster["pos"].x += monster["dir"] * 80 * dt
-            if monster["pos"].x < 50:
-                monster["dir"] = 1
-            if monster["pos"].x > 2500:
-                monster["dir"] = -1
-            
-            # Gravité des monstres
-            monster["vel_y"] += GRAVITY * dt
-            monster["pos"].y += monster["vel_y"] * dt
-            
-            # Collision avec le sol
-            monster_feet_y = monster["pos"].y + monster_radius
-            if monster_feet_y > GROUND_Y:
-                monster["pos"].y = GROUND_Y - monster_radius
-                monster["vel_y"] = 0
-            
-            # Collision avec les plateformes
-            if monster["vel_y"] >= 0:
-                for plat in platforms:
-                    if (plat.left - monster_radius < monster["pos"].x < plat.right + monster_radius and
-                        abs(monster_feet_y - plat.top) <= 10):
-                        monster["pos"].y = plat.top - monster_radius
-                        monster["vel_y"] = 0
-                        break
-            
-            if monster["hit_flash"] > 0:
-                monster["hit_flash"] -= dt
+    els.levelSelect.onchange = () => {
+      current = +els.levelSelect.value;
+      renderForm();
+      draw();
+    };
 
-        # Collision joueur-ennemi
-        p_center = (int(player_pos.x), int(player_pos.y))
-        if not is_invulnerable:
-            for monster in monsters[:]:
-                if pygame.Vector2(p_center).distance_to(monster["pos"]) < head_radius + monster_radius:
-                    lives -= 1
-                    is_invulnerable = True
-                    invuln_timer = invuln_time
-                    player_pos = spawn_point.copy()
-                    player_vel_y = 0
-                    create_particles(player_pos, (255, 255, 100), 15)
-                    break
+    els.exportBtn.onclick = () => {
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'levels.json';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    };
 
-        if is_invulnerable:
-            invuln_timer -= dt
-            if invuln_timer <= 0:
-                is_invulnerable = False
+    els.importFile.onchange = async () => {
+      const file = els.importFile.files?.[0];
+      if (!file) return;
+      const text = await file.text();
+      try {
+        const json = JSON.parse(text);
+        if (!json.levels || !Array.isArray(json.levels)) throw new Error('levels[] manquant');
+        data = json;
+        current = 0;
+        refreshLevelSelect();
+        renderForm();
+        draw();
+      } catch (e) {
+        alert('Fichier invalide: ' + e.message);
+      } finally {
+        els.importFile.value = '';
+      }
+    };
 
-        # Particules
-        for part in particles[:]:
-            part["pos"] += part["vel"] * dt
-            part["vel"].y += GRAVITY * 0.5 * dt
-            part["life"] -= dt * 2
-            if part["life"] <= 0:
-                particles.remove(part)
+    // Canvas preview
+    const ctx = els.view.getContext('2d');
+    let zoom = 1;
+    let scrollX = 0, scrollY = 0;
+    let dragging = null; // { type: 'platform'|'goal'|'spawn'|'pan', idx?: number, dx, dy }
 
-        # Victoire
-        if not victory and pygame.Rect(int(player_pos.x - head_radius), int(player_pos.y - head_radius), 
-                                       head_radius*2, head_radius*2).colliderect(goal_rect):
-            victory = True
+    // Navigation infinie avec le clavier
+    const keys = {};
+    const MOVE_SPEED = 600; // pixels par seconde
+    let lastTime = 0;
 
-        # --- DESSIN DU JEU ---
+    // Gestion des touches
+    window.addEventListener('keydown', (e) => {
+      // Empêcher le défilement de la page
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyZ', 'KeyQ'].includes(e.code)) {
+        e.preventDefault();
+      }
+      keys[e.code] = true;
+    });
 
-        # Ciel dégradé
-        for i in range(SCREEN_HEIGHT):
-            color = (
-                int(70 + (130 - 70) * i / SCREEN_HEIGHT),
-                int(130 + (180 - 130) * i / SCREEN_HEIGHT),
-                int(180 + (230 - 180) * i / SCREEN_HEIGHT)
-            )
-            pygame.draw.line(screen, color, (0, i), (SCREEN_WIDTH, i))
+    window.addEventListener('keyup', (e) => {
+      keys[e.code] = false;
+    });
 
-        # Sol
-        ground_rect = pygame.Rect(0 - camera_offset.x, GROUND_Y - camera_offset.y, 3000, 100)
-        pygame.draw.rect(screen, GROUND_COLOR, ground_rect)
-        pygame.draw.rect(screen, (25, 100, 25), ground_rect, 3)
-        for i in range(0, 3000, 50):
-            pygame.draw.line(screen, (44, 160, 44), 
-                            (i - camera_offset.x, GROUND_Y - camera_offset.y),
-                            (i - camera_offset.x, GROUND_Y - camera_offset.y + 100), 2)
+    // Boucle d'animation pour la navigation fluide
+    function updateNavigation(currentTime) {
+      if (lastTime === 0) lastTime = currentTime;
+      const deltaTime = (currentTime - lastTime) / 1000; // en secondes
+      lastTime = currentTime;
 
-        # Plateformes
-        for plat in platforms:
-            plat_rect_screen = plat.move(-camera_offset.x, -camera_offset.y)
-            pygame.draw.rect(screen, PLATFORM_COLOR, plat_rect_screen)
-            pygame.draw.rect(screen, PLATFORM_HIGHLIGHT, plat_rect_screen, 3)
-            pygame.draw.line(screen, (80, 50, 20), 
-                            (plat_rect_screen.left, plat_rect_screen.top + 5),
-                            (plat_rect_screen.right, plat_rect_screen.top + 5), 2)
+      let moved = false;
+      const moveDistance = MOVE_SPEED * deltaTime;
 
-        # Porte
-        goal_rect_screen = goal_rect.move(-camera_offset.x, -camera_offset.y)
-        pygame.draw.rect(screen, DOOR_COLOR, goal_rect_screen)
-        pygame.draw.rect(screen, DOOR_FRAME, goal_rect_screen, 5)
-        pygame.draw.line(screen, (100, 70, 20), 
-                        (goal_rect_screen.centerx, goal_rect_screen.top),
-                        (goal_rect_screen.centerx, goal_rect_screen.bottom), 3)
-        knob_pos = (goal_rect_screen.right - 12, goal_rect_screen.centery)
-        pygame.draw.circle(screen, (30, 30, 30), knob_pos, 6)
-        pygame.draw.circle(screen, (80, 80, 80), knob_pos, 3)
+      // Navigation avec les flèches ou WASD
+      if (keys['ArrowLeft'] || keys['KeyA'] || keys['KeyQ']) {
+        scrollX += moveDistance;
+        moved = true;
+      }
+      if (keys['ArrowRight'] || keys['KeyD']) {
+        scrollX -= moveDistance;
+        moved = true;
+      }
+      if (keys['ArrowUp'] || keys['KeyW'] || keys['KeyZ']) {
+        scrollY += moveDistance;
+        moved = true;
+      }
+      if (keys['ArrowDown'] || keys['KeyS']) {
+        scrollY -= moveDistance;
+        moved = true;
+      }
 
-        # Joueur
-        p_center_screen = (int(player_pos.x - camera_offset.x), int(player_pos.y - camera_offset.y))
+      if (moved) {
+        draw();
+      }
 
-        if not is_invulnerable or int(invuln_timer * 10) % 2 == 0:
-            pygame.draw.circle(screen, skin_color, p_center_screen, head_radius)
-            pygame.draw.circle(screen, (0, 0, 0), p_center_screen, head_radius, 3)
-            
-            eye_offset = 7
-            pygame.draw.circle(screen, (0, 0, 0), 
-                              (p_center_screen[0] - eye_offset * direction, p_center_screen[1] - 5), 3)
-            pygame.draw.arc(screen, (0, 0, 0), 
-                           (p_center_screen[0] - head_radius, p_center_screen[1] - head_radius, 
-                            head_radius*2, head_radius*2), 3.8, 5.0, 3)
+      requestAnimationFrame(updateNavigation);
+    }
 
-            body_start = (p_center_screen[0], p_center_screen[1] + head_radius)
-            body_end = (p_center_screen[0], p_center_screen[1] + head_radius + body_height)
-            pygame.draw.line(screen, (0, 0, 0), body_start, body_end, 5)
+    // Démarrer la boucle d'animation
+    requestAnimationFrame(updateNavigation);
 
-            arm_y = p_center_screen[1] + head_radius + 15
-            arm_angle = math.sin(walk_cycle * 10) * 15
-            arm_offset = arm_length * math.cos(math.radians(arm_angle))
-            pygame.draw.line(screen, (0, 0, 0), 
-                            (p_center_screen[0] - arm_offset, arm_y), 
-                            (p_center_screen[0] + arm_offset, arm_y), 5)
+    function resize() {
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      els.view.width = Math.floor(els.view.clientWidth * dpr);
+      els.view.height = Math.floor(els.view.clientHeight * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      draw();
+    }
+    window.addEventListener('resize', resize);
 
-            leg_offset = 15
-            leg_swing = math.sin(walk_cycle * 10) * 12
-            leg_left = (p_center_screen[0] - leg_offset, body_end[1] + leg_height + leg_swing)
-            leg_right = (p_center_screen[0] + leg_offset, body_end[1] + leg_height - leg_swing)
-            pygame.draw.line(screen, (0, 0, 0), body_end, leg_left, 5)
-            pygame.draw.line(screen, (0, 0, 0), body_end, leg_right, 5)
+    els.view.addEventListener('wheel', (e) => {
+      hideContextMenu();
+      if (e.ctrlKey) {
+        // Zoom avec Ctrl + molette
+        e.preventDefault();
+        const delta = Math.sign(e.deltaY);
+        const rect = els.view.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
 
-        # Projectiles
-        for proj in projectiles:
-            proj_screen = (int(proj["pos"].x - camera_offset.x), int(proj["pos"].y - camera_offset.y))
-            pygame.draw.circle(screen, (150, 255, 150), proj_screen, projectile_radius + 2)
-            pygame.draw.circle(screen, (0, 255, 0), proj_screen, projectile_radius)
-            pygame.draw.circle(screen, (255, 255, 255), proj_screen, projectile_radius - 3)
+        // Zoom centré sur la souris
+        const worldX = (mouseX - scrollX) / zoom;
+        const worldY = (mouseY - scrollY) / zoom;
 
-        # Monstres
-        for monster in monsters:
-            monster_screen = (int(monster["pos"].x - camera_offset.x), 
-                             int(monster["pos"].y - camera_offset.y))
-            
-            monster_color = (255, 200, 200) if monster["hit_flash"] > 0 else (220, 20, 20)
-            
-            if monster["is_tank"]:
-                pygame.draw.circle(screen, monster_color, monster_screen, monster_radius + 5)
-                pygame.draw.circle(screen, (0, 0, 0), monster_screen, monster_radius + 5, 3)
-                
-                backpack_x = monster_screen[0] - 15
-                backpack_y = monster_screen[1]
-                backpack_rect = pygame.Rect(backpack_x - 10, backpack_y - 15, 20, 30)
-                pygame.draw.rect(screen, (60, 40, 20), backpack_rect)
-                pygame.draw.rect(screen, (0, 0, 0), backpack_rect, 2)
-                pygame.draw.circle(screen, (100, 80, 50), (backpack_x, backpack_y - 5), 5)
-                
-                pygame.draw.circle(screen, (255, 255, 0), (monster_screen[0] - 8, monster_screen[1] - 5), 4)
-                pygame.draw.circle(screen, (255, 255, 0), (monster_screen[0] + 8, monster_screen[1] - 5), 4)
-                pygame.draw.circle(screen, (0, 0, 0), (monster_screen[0] - 8, monster_screen[1] - 5), 2)
-                pygame.draw.circle(screen, (0, 0, 0), (monster_screen[0] + 8, monster_screen[1] - 5), 2)
-                
-                if monster["hp"] == 2:
-                    pygame.draw.circle(screen, (0, 255, 0), (monster_screen[0], monster_screen[1] - 40), 5)
-                    pygame.draw.circle(screen, (0, 255, 0), (monster_screen[0] + 12, monster_screen[1] - 40), 5)
-                else:
-                    pygame.draw.circle(screen, (255, 165, 0), (monster_screen[0], monster_screen[1] - 40), 5)
-            else:
-                pygame.draw.circle(screen, monster_color, monster_screen, monster_radius)
-                pygame.draw.circle(screen, (0, 0, 0), monster_screen, monster_radius, 3)
-                
-                pygame.draw.circle(screen, (0, 0, 0), (monster_screen[0] - 8, monster_screen[1] - 5), 4)
-                pygame.draw.circle(screen, (0, 0, 0), (monster_screen[0] + 8, monster_screen[1] - 5), 4)
+        const newZoom = Math.min(5, Math.max(0.1, zoom * (delta > 0 ? 0.9 : 1.1)));
 
-        # Particules
-        for part in particles:
-            if part["life"] > 0:
-                part_screen = (int(part["pos"].x - camera_offset.x), int(part["pos"].y - camera_offset.y))
-                color = tuple(min(255, max(0, int(c * part["life"]))) for c in part["color"])
-                pygame.draw.circle(screen, color, part_screen, 3)
+        scrollX = mouseX - worldX * newZoom;
+        scrollY = mouseY - worldY * newZoom;
+        zoom = newZoom;
 
-        # --- HUD ---
-        hud_panel = pygame.Surface((300, 150), pygame.SRCALPHA)
-        hud_panel.fill((0, 0, 0, 120))
-        screen.blit(hud_panel, (10, 10))
+        draw();
+      } else {
+        // Déplacement vertical avec la molette normale (sens naturel)
+        e.preventDefault();
+        scrollY -= e.deltaY * 0.5;
+        draw();
+      }
+    }, { passive: false });
 
-        score_text = font.render(f"Score: {score}", True, (255, 255, 255))
-        screen.blit(score_text, (30, 25))
-        
-        # Vies avec cœurs
-        lives_text = font.render("Vies:", True, (255, 255, 255))
-        screen.blit(lives_text, (30, 70))
-        for i in range(lives):
-            heart_x = 130 + i * 35
-            pygame.draw.circle(screen, (255, 50, 50), (heart_x - 5, 85), 10)
-            pygame.draw.circle(screen, (255, 50, 50), (heart_x + 5, 85), 10)
-            pygame.draw.polygon(screen, (255, 50, 50), 
-                               [(heart_x - 15, 85), (heart_x, 100), (heart_x + 15, 85)])
+    function worldFromClient(e) {
+      const rect = els.view.getBoundingClientRect();
+      const x = (e.clientX - rect.left) * (els.view.width / rect.width);
+      const y = (e.clientY - rect.top) * (els.view.height / rect.height);
+      const px = (x - scrollX) / zoom;
+      const py = (y - scrollY) / zoom;
+      return { px, py };
+    }
 
-        if is_invulnerable:
-            inv_text = small_font.render("⚡ INVULNÉRABLE", True, (255, 255, 0))
-            screen.blit(inv_text, (30, 120))
+    function doSnap(v) {
+      const stepEl = document.getElementById('snapStep');
+      const toggleEl = document.getElementById('snapToggle');
+      const step = Math.max(1, +(stepEl?.value || 10));
+      const use = !!(toggleEl?.checked);
+      return use ? Math.round(v / step) * step : v;
+    }
 
-        # Indicateur de cooldown spawn
-        if monster_spawn_timer > 0:
-            cooldown_text = small_font.render(f"Prochain spawn: {monster_spawn_timer:.1f}s", 
-                                             True, (200, 200, 200))
-            screen.blit(cooldown_text, (SCREEN_WIDTH - 350, 30))
+    function hitTest(lvl, x, y) {
+      // Test plateformes en priorité (haut->bas)
+      for (let i = lvl.platforms.length - 1; i >= 0; i--) {
+        const p = lvl.platforms[i];
+        if (x >= p.x && x <= p.x + p.w && y >= p.y && y <= p.y + p.h) {
+          return { type: 'platform', idx: i };
+        }
+      }
+      // Ennemis
+      if (Array.isArray(lvl.enemies)) {
+        for (let i = lvl.enemies.length - 1; i >= 0; i--) {
+          const en = lvl.enemies[i];
+          if (x >= en.x && x <= en.x + (en.w || 0) && y >= en.y && y <= en.y + (en.h || 0)) {
+            return { type: 'enemy', idx: i };
+          }
+        }
+      }
+      // Porte
+      const g = lvl.goal;
+      if (x >= g.x && x <= g.x + g.w && y >= g.y && y <= g.y + g.h) return { type: 'goal' };
+      // Spawn (cercle rayon ~12)
+      const dx = x - lvl.spawn.x, dy = y - lvl.spawn.y;
+      if (dx*dx + dy*dy <= 12*12) return { type: 'spawn' };
+      return null;
+    }
 
-        # Messages de fin
-        if victory:
-            overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-            overlay.fill((0, 0, 0, 180))
-            screen.blit(overlay, (0, 0))
-            
-            big_text = pygame.font.SysFont(None, 120).render("VICTOIRE !", True, (255, 215, 0))
-            sub_text = font.render("Félicitations !", True, (255, 255, 255))
-            score_final = font.render(f"Score Final: {score}", True, (255, 255, 255))
-            
-            screen.blit(big_text, (SCREEN_WIDTH//2 - big_text.get_width()//2, SCREEN_HEIGHT//2 - 100))
-            screen.blit(sub_text, (SCREEN_WIDTH//2 - sub_text.get_width()//2, SCREEN_HEIGHT//2 + 20))
-            screen.blit(score_final, (SCREEN_WIDTH//2 - score_final.get_width()//2, SCREEN_HEIGHT//2 + 70))
-            pygame.display.flip()
-            pygame.time.delay(3000)
-            running = False
+    const entityEditorEls = {
+      container: document.getElementById('entityEditor'),
+      title: document.getElementById('entityEditorTitle'),
+      x: document.getElementById('entityEditorX'),
+      y: document.getElementById('entityEditorY'),
+      w: document.getElementById('entityEditorWidth'),
+      h: document.getElementById('entityEditorHeight'),
+      typeWrap: document.getElementById('entityEditorTypeWrap'),
+      type: document.getElementById('entityEditorType'),
+      save: document.getElementById('entityEditorSave'),
+      cancel: document.getElementById('entityEditorCancel'),
+      close: document.getElementById('entityEditorClose'),
+    };
 
-        if lives <= 0:
-            overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-            overlay.fill((0, 0, 0, 200))
-            screen.blit(overlay, (0, 0))
-            
-            over_text = pygame.font.SysFont(None, 96).render("GAME OVER", True, (255, 50, 50))
-            score_final = font.render(f"Score: {score}", True, (255, 255, 255))
-            
-            screen.blit(over_text, (SCREEN_WIDTH//2 - over_text.get_width()//2, SCREEN_HEIGHT//2 - 60))
-            screen.blit(score_final, (SCREEN_WIDTH//2 - score_final.get_width()//2, SCREEN_HEIGHT//2 + 20))
-            pygame.display.flip()
-            pygame.time.delay(2000)
-            
-            lives = 3
-            score = 0
-            player_pos = spawn_point.copy()
-            player_vel_y = 0
-            camera_offset = pygame.Vector2(0, 0)
-            
-            # Recréer les monstres aux positions initiales
-            monsters = []
-            for pos_data in initial_monster_positions:
-                monsters.append(spawn_monster_at(pos_data["x"], pos_data["y"], pos_data["type"]))
-            
-            projectiles = []
-            particles = []
+    let editingEntity = null;
 
-    pygame.display.flip()
-    dt = clock.tick(FPS) / 1000
+    function openEntityEditor(type, index) {
+      const lvl = data.levels[current];
+      if (!lvl) return;
+      let entity = null;
+      if (type === 'enemy') {
+        if (!Array.isArray(lvl.enemies) || !lvl.enemies[index]) return;
+        entity = lvl.enemies[index];
+      } else if (type === 'platform') {
+        if (!lvl.platforms[index]) return;
+        entity = lvl.platforms[index];
+      }
+      if (!entity) return;
 
-pygame.quit()
+      editingEntity = { type, index };
+      entityEditorEls.title.textContent = type === 'enemy' ? 'Modifier un ennemi' : 'Modifier une plateforme';
+      entityEditorEls.typeWrap.style.display = type === 'enemy' ? 'flex' : 'none';
+
+      entityEditorEls.x.value = Number.isFinite(entity.x) ? entity.x : 0;
+      entityEditorEls.y.value = Number.isFinite(entity.y) ? entity.y : 0;
+      entityEditorEls.w.value = Number.isFinite(entity.w) ? entity.w : (entity.radius ? entity.radius * 2 : 0);
+      entityEditorEls.h.value = Number.isFinite(entity.h) ? entity.h : (entity.radius ? entity.radius * 2 : 0);
+      if (type === 'enemy') {
+        entityEditorEls.type.value = entity.type || 'basic';
+      }
+
+      entityEditorEls.container.classList.add('visible');
+    }
+
+    function closeEntityEditor() {
+      editingEntity = null;
+      entityEditorEls.container.classList.remove('visible');
+    }
+
+    function saveEntityEditor() {
+      if (!editingEntity) return;
+      const lvl = data.levels[current];
+      if (!lvl) return;
+      const xVal = parseFloat(entityEditorEls.x.value);
+      const yVal = parseFloat(entityEditorEls.y.value);
+      const wVal = parseFloat(entityEditorEls.w.value);
+      const hVal = parseFloat(entityEditorEls.h.value);
+      if (!Number.isFinite(xVal) || !Number.isFinite(yVal) || !Number.isFinite(wVal) || !Number.isFinite(hVal) || wVal <= 0 || hVal <= 0) {
+        alert('Veuillez saisir des valeurs valides.');
+        return;
+      }
+
+      if (editingEntity.type === 'enemy') {
+        const enemy = lvl.enemies[editingEntity.index];
+        if (!enemy) return;
+        enemy.x = doSnap(xVal);
+        enemy.y = doSnap(yVal);
+        enemy.w = doSnap(wVal);
+        enemy.h = doSnap(hVal);
+        enemy.type = entityEditorEls.type.value || enemy.type || 'basic';
+      } else if (editingEntity.type === 'platform') {
+        const platform = lvl.platforms[editingEntity.index];
+        if (!platform) return;
+        platform.x = doSnap(xVal);
+        platform.y = doSnap(yVal);
+        platform.w = doSnap(wVal);
+        platform.h = doSnap(hVal);
+      }
+
+      renderForm();
+      draw();
+      closeEntityEditor();
+    }
+
+    entityEditorEls.save?.addEventListener('click', saveEntityEditor);
+    entityEditorEls.cancel?.addEventListener('click', closeEntityEditor);
+    entityEditorEls.close?.addEventListener('click', closeEntityEditor);
+
+    els.view.addEventListener('mousedown', (e) => {
+      hideContextMenu();
+      const btn = e.button; // 0: gauche, 1: milieu, 2: droit
+      const lvl = data.levels[current];
+      const { px, py } = worldFromClient(e);
+      if (btn === 1) {
+        dragging = { type: 'pan', dx: e.clientX, dy: e.clientY, moved: false };
+        return;
+      }
+      if (btn === 2) {
+        return;
+      }
+      // gauche: drag objet ou ajout si vide
+      const hit = hitTest(lvl, px, py);
+      if (hit) {
+        if (hit.type === 'platform') {
+          const p = lvl.platforms[hit.idx];
+          dragging = { type: 'platform', idx: hit.idx, dx: px - p.x, dy: py - p.y, moved: false };
+        } else if (hit.type === 'goal') {
+          dragging = { type: 'goal', dx: px - lvl.goal.x, dy: py - lvl.goal.y, moved: false };
+        } else if (hit.type === 'spawn') {
+          dragging = { type: 'spawn', dx: px - lvl.spawn.x, dy: py - lvl.spawn.y, moved: false };
+        } else if (hit.type === 'enemy') {
+          openEntityEditor('enemy', hit.idx);
+        }
+      } else {
+        // ajout rapide si vide
+        const nx = doSnap(Math.round(px));
+        const ny = doSnap(Math.round(py));
+        lvl.platforms.push({ x: nx, y: ny, w: 100, h: 20 });
+        renderForm();
+        draw();
+      }
+    });
+
+    els.view.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const lvl = data.levels[current];
+      const { px, py } = worldFromClient(e);
+      const hit = hitTest(lvl, px, py);
+      showContextMenu(e, hit);
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (!dragging) return;
+      dragging = null;
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!dragging) return;
+      const lvl = data.levels[current];
+      if (dragging.type === 'pan') {
+        scrollX += (e.clientX - dragging.dx);
+        scrollY += (e.clientY - dragging.dy);
+        dragging.dx = e.clientX; dragging.dy = e.clientY;
+        dragging.moved = true;
+        draw();
+        return;
+      }
+      const { px, py } = worldFromClient(e);
+      if (dragging.type === 'platform') {
+        const p = lvl.platforms[dragging.idx];
+        const prevX = p.x;
+        const prevY = p.y;
+        p.x = doSnap(px - dragging.dx);
+        p.y = doSnap(py - dragging.dy);
+        if (p.x !== prevX || p.y !== prevY) {
+          dragging.moved = true;
+        }
+      } else if (dragging.type === 'goal') {
+        lvl.goal.x = doSnap(px - dragging.dx);
+        lvl.goal.y = doSnap(py - dragging.dy);
+        dragging.moved = true;
+      } else if (dragging.type === 'spawn') {
+        lvl.spawn.x = doSnap(px - dragging.dx);
+        lvl.spawn.y = doSnap(py - dragging.dy);
+        dragging.moved = true;
+      }
+      renderForm();
+      draw();
+    });
+
+    if (els.contextMenu) {
+      els.contextMenu.addEventListener('mousedown', (e) => e.stopPropagation());
+      els.contextMenu.addEventListener('click', (e) => {
+        const btn = e.target.closest('button');
+        if (!btn || btn.disabled) return;
+        const action = btn.dataset.action;
+        const lvl = data.levels[current];
+        const wx = doSnap(contextMenuState.worldX);
+        const wy = doSnap(contextMenuState.worldY);
+        switch (action) {
+          case 'add-enemy': {
+            const enemies = lvl.enemies || (lvl.enemies = []);
+            enemies.push({ x: wx, y: wy, w: 28, h: 28, type: 'basic' });
+            break;
+          }
+          case 'set-spawn': {
+            lvl.spawn.x = wx;
+            lvl.spawn.y = wy;
+            break;
+          }
+          case 'set-goal': {
+            lvl.goal.x = wx;
+            lvl.goal.y = wy;
+            break;
+          }
+          case 'modify-menu': {
+            const submenu = els.contextMenu?.querySelector('.context-submenu');
+            if (!btn.disabled && submenu) {
+              submenu.classList.toggle('visible');
+            }
+            // Ne pas fermer le menu immédiatement
+            return;
+          }
+          case 'modify-enemy': {
+            if (contextMenuState.hit && contextMenuState.hit.type === 'enemy') {
+              openEntityEditor('enemy', contextMenuState.hit.idx);
+            }
+            break;
+          }
+          case 'modify-platform': {
+            if (contextMenuState.hit && contextMenuState.hit.type === 'platform') {
+              openEntityEditor('platform', contextMenuState.hit.idx);
+            }
+            break;
+          }
+          case 'delete-platform': {
+            if (contextMenuState.hit && contextMenuState.hit.type === 'platform') {
+              lvl.platforms.splice(contextMenuState.hit.idx, 1);
+            }
+            break;
+          }
+          case 'delete-enemy': {
+            if (contextMenuState.hit && contextMenuState.hit.type === 'enemy') {
+              lvl.enemies.splice(contextMenuState.hit.idx, 1);
+            }
+            break;
+          }
+          default:
+            break;
+        }
+        renderForm();
+        draw();
+        hideContextMenu();
+        // Ouvrir le sous-menu ne doit pas fermer le menu
+        if (action === 'modify-menu') {
+          return;
+        }
+      });
+    }
+
+    document.addEventListener('mousedown', (e) => {
+      if (!contextMenuState.visible) return;
+      if (!els.contextMenu || els.contextMenu.contains(e.target)) return;
+      hideContextMenu();
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        hideContextMenu();
+      }
+    });
+
+    function drawGrid() {
+      const w = els.view.clientWidth, h = els.view.clientHeight;
+      ctx.save();
+      ctx.translate(scrollX, scrollY);
+      ctx.scale(zoom, zoom);
+      ctx.clearRect(-scrollX/zoom, -scrollY/zoom, w/zoom, h/zoom);
+
+      // Dégradé de ciel dynamique
+      const g = ctx.createLinearGradient(0, -scrollY/zoom - 500, 0, h/zoom - scrollY/zoom + 500);
+      g.addColorStop(0, '#87ceeb');
+      g.addColorStop(0.3, '#b8e6ff');
+      g.addColorStop(0.7, '#e0f6ff');
+      g.addColorStop(1, '#98fb98');
+      ctx.fillStyle = g;
+      ctx.fillRect(-scrollX/zoom - 1000, -scrollY/zoom - 1000, w/zoom + 2000, h/zoom + 2000);
+      const step = 50;
+      const viewLeft = -scrollX/zoom - 100;
+      const viewRight = viewLeft + w/zoom + 200;
+      const viewTop = -scrollY/zoom - 100;
+      const viewBottom = viewTop + h/zoom + 200;
+
+      // Lignes verticales (avec lignes majeures tous les 250px)
+      const startX = Math.floor(viewLeft / step) * step;
+      for (let x = startX; x <= viewRight; x += step) {
+        const major = x % 250 === 0;
+        ctx.strokeStyle = major ? 'rgba(183, 211, 255, 0.8)' : 'rgba(215, 234, 255, 0.5)';
+        ctx.lineWidth = major ? 1.5 : 0.8;
+        ctx.beginPath();
+        ctx.moveTo(x, viewTop);
+        ctx.lineTo(x, viewBottom);
+        ctx.stroke();
+      }
+
+      // Lignes horizontales (avec lignes majeures tous les 250px)
+      const startY = Math.floor(viewTop / step) * step;
+      for (let y = startY; y <= viewBottom; y += step) {
+        const major = y % 250 === 0;
+        ctx.strokeStyle = major ? 'rgba(183, 211, 255, 0.8)' : 'rgba(215, 234, 255, 0.5)';
+        ctx.lineWidth = major ? 1.5 : 0.8;
+        ctx.beginPath();
+        ctx.moveTo(viewLeft, y);
+        ctx.lineTo(viewRight, y);
+        ctx.stroke();
+      }
+
+      // Axes de coordonnées (0,0)
+      ctx.strokeStyle = 'rgba(255, 100, 100, 0.7)';
+      ctx.lineWidth = 2;
+      // Axe X
+      ctx.beginPath();
+      ctx.moveTo(viewLeft, 0);
+      ctx.lineTo(viewRight, 0);
+      ctx.stroke();
+      // Axe Y
+      ctx.beginPath();
+      ctx.moveTo(0, viewTop);
+      ctx.lineTo(0, viewBottom);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function draw() {
+      const w = els.view.clientWidth, h = els.view.clientHeight;
+      ctx.clearRect(0, 0, w, h);
+      drawGrid();
+      const lvl = data.levels[current];
+      ctx.save();
+      ctx.translate(scrollX, scrollY);
+      ctx.scale(zoom, zoom);
+
+      // Ground avec dégradé
+      const groundGradient = ctx.createLinearGradient(0, lvl.ground.y, 0, lvl.ground.y + 100);
+      groundGradient.addColorStop(0, '#3d8b3d');
+      groundGradient.addColorStop(0.3, '#2e8b57');
+      groundGradient.addColorStop(1, '#1e5e3e');
+      ctx.fillStyle = groundGradient;
+      ctx.fillRect(lvl.ground.start_x, lvl.ground.y, lvl.ground.end_x - lvl.ground.start_x, 100);
+      ctx.strokeStyle = '#1b5e3b';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(lvl.ground.start_x, lvl.ground.y, Math.max(1, lvl.ground.end_x - lvl.ground.start_x), 100);
+
+      // Platforms avec dégradé et ombres
+      lvl.platforms.forEach(p => {
+        // Ombre
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+        ctx.fillRect(p.x + 3, p.y + 3, p.w, p.h);
+
+        // Plateforme avec dégradé
+        const platformGradient = ctx.createLinearGradient(0, p.y, 0, p.y + p.h);
+        platformGradient.addColorStop(0, '#8b7355');
+        platformGradient.addColorStop(0.5, '#654321');
+        platformGradient.addColorStop(1, '#4a2c17');
+        ctx.fillStyle = platformGradient;
+        ctx.fillRect(p.x, p.y, p.w, p.h);
+
+        // Bordure
+        ctx.strokeStyle = '#8b5a2b';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(p.x, p.y, p.w, p.h);
+
+        // Highlight sur le dessus
+        ctx.strokeStyle = 'rgba(139, 115, 85, 0.8)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.x + p.w, p.y);
+        ctx.stroke();
+      });
+
+      // Enemies
+      if (lvl.enemies && lvl.enemies.length) {
+        lvl.enemies.forEach(en => {
+          const t = en.type || 'basic';
+          const colors = {
+            basic: ['#dc2626', '#7f1d1d'],
+            patrol: ['#f97316', '#7c2d12'],
+            shooter: ['#7c3aed', '#4c1d95'],
+            flyer: ['#2563eb', '#1e3a8a']
+          };
+          const [fillC, strokeC] = colors[t] || colors.basic;
+          ctx.fillStyle = fillC;
+          ctx.strokeStyle = strokeC;
+          ctx.lineWidth = 2;
+          ctx.fillRect(en.x, en.y, en.w, en.h);
+          ctx.strokeRect(en.x, en.y, en.w, en.h);
+          // yeux
+          ctx.fillStyle = '#fff';
+          ctx.fillRect(en.x + 6, en.y + 8, 4, 6);
+          ctx.fillRect(en.x + en.w - 10, en.y + 8, 4, 6);
+          // label type
+          ctx.fillStyle = 'rgba(0,0,0,0.7)';
+          ctx.font = '12px ui-monospace, monospace';
+          ctx.fillText(t, en.x, en.y - 6);
+        });
+      }
+
+      // Goal (porte) avec effet brillant
+      // Ombre
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+      ctx.fillRect(lvl.goal.x + 4, lvl.goal.y + 4, lvl.goal.w, lvl.goal.h);
+
+      // Porte avec dégradé doré
+      const goalGradient = ctx.createLinearGradient(0, lvl.goal.y, 0, lvl.goal.y + lvl.goal.h);
+      goalGradient.addColorStop(0, '#ffd700');
+      goalGradient.addColorStop(0.3, '#b8860b');
+      goalGradient.addColorStop(0.7, '#b8860b');
+      goalGradient.addColorStop(1, '#8b6508');
+      ctx.fillStyle = goalGradient;
+      ctx.fillRect(lvl.goal.x, lvl.goal.y, lvl.goal.w, lvl.goal.h);
+
+      // Bordure dorée
+      ctx.strokeStyle = '#8b6508';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(lvl.goal.x, lvl.goal.y, lvl.goal.w, lvl.goal.h);
+
+      // Poignée de porte
+      ctx.fillStyle = '#654321';
+      ctx.beginPath();
+      ctx.arc(lvl.goal.x + lvl.goal.w * 0.8, lvl.goal.y + lvl.goal.h * 0.5, 4, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Label avec fond
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+      ctx.fillRect(lvl.goal.x - 5, lvl.goal.y - 25, 50, 16);
+      ctx.fillStyle = '#ffd700';
+      ctx.font = 'bold 12px ui-monospace, monospace';
+      ctx.fillText('🚪 Porte', lvl.goal.x, lvl.goal.y - 10);
+
+      // Spawn avec effet pulsant
+      const time = Date.now() / 1000;
+      const pulse = 0.8 + 0.2 * Math.sin(time * 3);
+
+      // Cercles concentriques
+      for (let i = 3; i >= 0; i--) {
+        const alpha = (1 - i * 0.2) * 0.3;
+        ctx.fillStyle = `rgba(31, 111, 235, ${alpha})`;
+        ctx.beginPath();
+        ctx.arc(lvl.spawn.x, lvl.spawn.y, (18 + i * 8) * pulse, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Spawn principal
+      const spawnGradient = ctx.createRadialGradient(lvl.spawn.x, lvl.spawn.y, 0, lvl.spawn.x, lvl.spawn.y, 12);
+      spawnGradient.addColorStop(0, '#4fc3f7');
+      spawnGradient.addColorStop(0.7, '#1f6feb');
+      spawnGradient.addColorStop(1, '#0d47a1');
+      ctx.fillStyle = spawnGradient;
+      ctx.beginPath();
+      ctx.arc(lvl.spawn.x, lvl.spawn.y, 12 * pulse, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Bordure
+      ctx.strokeStyle = '#0d47a1';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(lvl.spawn.x, lvl.spawn.y, 12 * pulse, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Label avec fond
+      ctx.fillStyle = 'rgba(13, 71, 161, 0.9)';
+      ctx.fillRect(lvl.spawn.x + 15, lvl.spawn.y - 12, 55, 16);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 12px ui-monospace, monospace';
+      ctx.fillText('🎯 Spawn', lvl.spawn.x + 18, lvl.spawn.y - 2);
+
+      ctx.restore();
+    }
+
+    // Init
+    refreshLevelSelect();
+    renderForm();
+    resize();
+    draw();
+    // Mouse world coordinates display
+    els.view.addEventListener('mousemove', (e) => {
+      const rect = els.view.getBoundingClientRect();
+      const x = (e.clientX - rect.left) * (els.view.width / rect.width);
+      const y = (e.clientY - rect.top) * (els.view.height / rect.height);
+      let px = Math.round((x - scrollX) / zoom);
+      let py = Math.round((y - scrollY) / zoom);
+      px = doSnap(px); py = doSnap(py);
+      const z = Math.round(zoom * 100) / 100;
+      const el = document.getElementById('mouseInfo');
+      if (el) el.textContent = `| Souris: ${px}, ${py} | Zoom: ${z}x`;
+    });
+  </script>
+</body>
+</html>
