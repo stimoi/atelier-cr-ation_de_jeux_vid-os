@@ -569,13 +569,13 @@
 
     // Navigation infinie avec le clavier
     const keys = {};
-    const MOVE_SPEED = 200; // pixels par seconde
+    const MOVE_SPEED = 600; // pixels par seconde
     let lastTime = 0;
 
     // Gestion des touches
     window.addEventListener('keydown', (e) => {
       // Empêcher le défilement de la page
-      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(e.code)) {
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyZ', 'KeyQ'].includes(e.code)) {
         e.preventDefault();
       }
       keys[e.code] = true;
@@ -595,7 +595,7 @@
       const moveDistance = MOVE_SPEED * deltaTime;
 
       // Navigation avec les flèches ou WASD
-      if (keys['ArrowLeft'] || keys['KeyA']) {
+      if (keys['ArrowLeft'] || keys['KeyA'] || keys['KeyQ']) {
         scrollX += moveDistance;
         moved = true;
       }
@@ -603,7 +603,7 @@
         scrollX -= moveDistance;
         moved = true;
       }
-      if (keys['ArrowUp'] || keys['KeyW']) {
+      if (keys['ArrowUp'] || keys['KeyW'] || keys['KeyZ']) {
         scrollY += moveDistance;
         moved = true;
       }
@@ -652,9 +652,9 @@
 
         draw();
       } else {
-        // Déplacement vertical avec la molette normale
+        // Déplacement vertical avec la molette normale (sens naturel)
         e.preventDefault();
-        scrollY += e.deltaY * 0.5;
+        scrollY -= e.deltaY * 0.5;
         draw();
       }
     }, { passive: false });
@@ -731,6 +731,8 @@
         draw();
       }
     });
+
+    els.view.addEventListener('contextmenu', (e) => e.preventDefault());
 
     window.addEventListener('mouseup', () => { dragging = null; });
 
