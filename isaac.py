@@ -27,12 +27,14 @@ JUMP_FORCE = -600
 MOVE_SPEED = 300
 PROJECTILE_SPEED = 800
 FPS = 60
-MAX_MONSTERS = 3
+MAX_MONSTERS = 100000
 MONSTER_SPAWN_COOLDOWN = 2.0  # Secondes entre chaque spawn
-DASH_SPEED = 1200
-DASH_DURATION = 0.15
+DASH_SPEED = 3600
+DASH_DURATION = 0.5
 DASH_COOLDOWN = 0.6
 DEATH_BELOW_Y = GROUND_Y + 1500
+MAX_JUMPS = 2
+SECOND_JUMP_MULT = 1.0
 
 def toggle_fullscreen():
     global screen, SCREEN_WIDTH, SCREEN_HEIGHT, is_fullscreen
@@ -173,6 +175,10 @@ dash_dir = 1
 
 player_pos.y = GROUND_Y - (head_radius + body_height + leg_height)
 spawn_point = player_pos.copy()
+
+# Double saut
+jumps_used = 0
+jump_was_down = False
 
 # === Projectiles ===
 projectiles = []
@@ -536,8 +542,15 @@ while running:
                 player_vel_y = 0
                 break
 
-    if keys[pygame.K_SPACE] and on_ground:
-        player_vel_y = JUMP_FORCE
+    # Double saut avec détection d'appui (edge trigger)
+    if keys[pygame.K_SPACE] and not jump_was_down:
+        if on_ground:
+            player_vel_y = JUMP_FORCE
+            jumps_used = 0
+        elif jumps_used < MAX_JUMPS - 1:
+            player_vel_y = JUMP_FORCE * SECOND_JUMP_MULT
+            jumps_used += 1
+            create_particles((player_pos.x, player_pos.y + head_radius + body_height + leg_height - 6), (180, 220, 255), 8)
 
     player_vel_y += GRAVITY * dt
     player_pos.y += player_vel_y * dt
@@ -572,6 +585,10 @@ while running:
         feet_y = GROUND_Y if feet_y >= GROUND_Y else player_pos.y + head_radius + body_height + leg_height
         create_particles((feet_x, feet_y), (180, 180, 180), 10)
     prev_on_ground = on_ground
+
+    # Reset des sauts à l'atterrissage
+    if on_ground:
+        jumps_used = 0
 
     blink_timer -= dt
     if blink_timer <= 0 and blink_close <= 0:
@@ -970,5 +987,7 @@ while running:
 
     pygame.display.flip()
     dt = clock.tick(FPS) / 1000
+    # Mémorise l'état de la touche saut pour détection d'appui (double saut)
+    jump_was_down = pygame.key.get_pressed()[pygame.K_SPACE]
 
 pygame.quit()
