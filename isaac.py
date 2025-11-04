@@ -13,9 +13,6 @@ small_font = pygame.font.SysFont(None, 32)
 title_font = pygame.font.SysFont(None, 96)
 fword_font = pygame.font.SysFont(None, 180)
 
-windowed_size = (1366, 769)
-is_fullscreen = False
-
 # === Constantes ===
 SCREEN_WIDTH, SCREEN_HEIGHT = screen.get_size()
 GROUND_Y = 680
@@ -26,8 +23,13 @@ GRAVITY = 800
 JUMP_FORCE = -600
 MOVE_SPEED = 300
 PROJECTILE_SPEED = 800
+STAMINA_MAX = 100
+STAMINA_JUMP_COST = 10
+STAMINA_REGEN_DELAY = 4.0
+STAMINA_REGEN_INTERVAL = 0.5
+STAMINA_REGEN_AMOUNT = 5
 FPS = 60
-MAX_MONSTERS = 100000
+MAX_MONSTERS = 3
 MONSTER_SPAWN_COOLDOWN = 2.0  # Secondes entre chaque spawn
 DASH_SPEED = 3600
 DASH_DURATION = 0.5
@@ -44,7 +46,6 @@ def toggle_fullscreen():
     else:
         screen = pygame.display.set_mode(windowed_size)
     SCREEN_WIDTH, SCREEN_HEIGHT = screen.get_size()
-
 
 # === Caméra ===
 camera_offset = pygame.Vector2(0, 0)
@@ -166,6 +167,12 @@ blink_timer = 0.0
 blink_close = 0.0
 prev_on_ground = True
 shoot_recoil = 0.0
+stamina = STAMINA_MAX
+stamina_idle_timer = 0.0
+stamina_regen_timer = 0.0
+
+player_pos.y = GROUND_Y - (head_radius + body_height + leg_height)
+spawn_point = player_pos.copy()
 
 # Dash
 is_dashing = False
@@ -179,6 +186,8 @@ spawn_point = player_pos.copy()
 # Double saut
 jumps_used = 0
 jump_was_down = False
+# Etat dash (edge-detect)
+dash_was_down = False
 
 # === Projectiles ===
 projectiles = []
@@ -326,11 +335,6 @@ while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
-        # Toggle plein écran (F11 ou Alt+Entrée)
-        elif event.type == pygame.KEYDOWN and (
-            event.key == pygame.K_F11 or (event.key in (pygame.K_RETURN, pygame.K_KP_ENTER) and (event.mod & pygame.KMOD_ALT))
-        ):
-            toggle_fullscreen()
         elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
             if game_state == "MENU":
                 running = False
@@ -340,22 +344,6 @@ while running:
             elif game_state == "PAUSED":
                 # Reprendre
                 game_state = "PLAYING"
-        elif event.type == pygame.KEYDOWN and event.key in (pygame.K_LSHIFT, pygame.K_RSHIFT):
-            if game_state == "PLAYING" and dash_cooldown_timer <= 0 and not is_dashing:
-                # Déterminer la direction du dash selon les entrées ou la direction actuelle
-                keys_now = pygame.key.get_pressed()
-                if keys_now[pygame.K_q] or keys_now[pygame.K_LEFT]:
-                    dash_dir = -1
-                elif keys_now[pygame.K_d] or keys_now[pygame.K_RIGHT]:
-                    dash_dir = 1
-                else:
-                    dash_dir = direction
-                is_dashing = True
-                dash_timer = DASH_DURATION
-                dash_cooldown_timer = DASH_COOLDOWN
-                # Courte invulnérabilité pendant le dash
-                is_invulnerable = True
-                invuln_timer = max(invuln_timer, DASH_DURATION)
         elif event.type == pygame.KEYDOWN and event.key == pygame.K_o:
             # Easter egg: gros texte à l'écran
             fword_timer = 1.5
@@ -377,6 +365,9 @@ while running:
                     projectiles = []
                     particles = []
                     monster_spawn_timer = 0.0
+                    stamina = STAMINA_MAX
+                    stamina_idle_timer = 0.0
+                    stamina_regen_timer = 0.0
                     game_state = "PLAYING"
                 elif quit_rect.collidepoint(event.pos):
                     running = False
@@ -432,6 +423,9 @@ while running:
                 projectiles = []
                 particles = []
                 monster_spawn_timer = 0.0
+                stamina = STAMINA_MAX
+                stamina_idle_timer = 0.0
+                stamina_regen_timer = 0.0
                 game_state = "PLAYING"
             elif game_state == "MENU" and event.key in (pygame.K_LEFT, pygame.K_RIGHT):
                 # Changer de niveau sélectionné dans le menu
@@ -513,6 +507,7 @@ while running:
     # --- LOGIQUE DU JEU ---
 
     # Mouvements
+    stamina_idle_timer += dt
     keys = pygame.key.get_pressed()
     moving = False
     if keys[pygame.K_q] or keys[pygame.K_LEFT]:
@@ -528,6 +523,20 @@ while running:
     else:
         walk_cycle = 0
 
+    # Détection dash (edge-detect sur Shift)
+    dash_pressed = keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]
+    if dash_pressed and not dash_was_down and not is_dashing and dash_cooldown_timer <= 0:
+        is_dashing = True
+        dash_timer = DASH_DURATION
+        dash_cooldown_timer = DASH_COOLDOWN
+        if keys[pygame.K_q] or keys[pygame.K_LEFT]:
+            dash_dir = -1
+        elif keys[pygame.K_d] or keys[pygame.K_RIGHT]:
+            dash_dir = 1
+        else:
+            dash_dir = direction
+    dash_was_down = dash_pressed
+
     # Détection sol/plateforme
     feet_y = player_pos.y + head_radius + body_height + leg_height
     on_ground = False
@@ -542,25 +551,34 @@ while running:
                 player_vel_y = 0
                 break
 
-    # Double saut avec détection d'appui (edge trigger)
-    if keys[pygame.K_SPACE] and not jump_was_down:
+    if on_ground:
+        jumps_used = 0
+    jump_pressed = keys[pygame.K_SPACE]
+    if jump_pressed and not jump_was_down and stamina >= STAMINA_JUMP_COST:
         if on_ground:
             player_vel_y = JUMP_FORCE
-            jumps_used = 0
-        elif jumps_used < MAX_JUMPS - 1:
+            jumps_used = 1
+            stamina = max(0, stamina - STAMINA_JUMP_COST)
+            stamina_idle_timer = 0.0
+            stamina_regen_timer = 0.0
+        elif jumps_used < MAX_JUMPS:
             player_vel_y = JUMP_FORCE * SECOND_JUMP_MULT
             jumps_used += 1
-            create_particles((player_pos.x, player_pos.y + head_radius + body_height + leg_height - 6), (180, 220, 255), 8)
+            stamina = max(0, stamina - STAMINA_JUMP_COST)
+            stamina_idle_timer = 0.0
+            stamina_regen_timer = 0.0
+    jump_was_down = jump_pressed
 
-    player_vel_y += GRAVITY * dt
-    player_pos.y += player_vel_y * dt
-
-    # Dash movement (horizontal boost while dashing)
     if is_dashing:
         player_pos.x += dash_dir * DASH_SPEED * dt
         dash_timer -= dt
         if dash_timer <= 0:
             is_dashing = False
+    else:
+        player_vel_y += GRAVITY * dt
+        player_pos.y += player_vel_y * dt
+    if dash_cooldown_timer > 0:
+        dash_cooldown_timer -= dt
 
     feet_y = player_pos.y + head_radius + body_height + leg_height
     if feet_y > GROUND_Y and GROUND_START_X <= player_pos.x <= GROUND_END_X:
@@ -580,15 +598,21 @@ while running:
 
     player_pos.x = max(head_radius, player_pos.x)
 
+    if stamina_idle_timer >= STAMINA_REGEN_DELAY and stamina < STAMINA_MAX:
+        stamina_regen_timer += dt
+        while stamina_regen_timer >= STAMINA_REGEN_INTERVAL and stamina < STAMINA_MAX:
+            stamina = min(STAMINA_MAX, stamina + STAMINA_REGEN_AMOUNT)
+            stamina_regen_timer -= STAMINA_REGEN_INTERVAL
+        if stamina >= STAMINA_MAX:
+            stamina_regen_timer = 0.0
+    else:
+        stamina_regen_timer = 0.0
+
     if not prev_on_ground and on_ground and player_vel_y == 0:
         feet_x = player_pos.x
         feet_y = GROUND_Y if feet_y >= GROUND_Y else player_pos.y + head_radius + body_height + leg_height
         create_particles((feet_x, feet_y), (180, 180, 180), 10)
     prev_on_ground = on_ground
-
-    # Reset des sauts à l'atterrissage
-    if on_ground:
-        jumps_used = 0
 
     blink_timer -= dt
     if blink_timer <= 0 and blink_close <= 0:
@@ -598,8 +622,6 @@ while running:
         blink_close -= dt
     if shoot_recoil > 0:
         shoot_recoil -= dt
-    if dash_cooldown_timer > 0:
-        dash_cooldown_timer -= dt
 
     if player_pos.y > DEATH_BELOW_Y:
         lives -= 1
@@ -919,7 +941,7 @@ while running:
 
     # --- HUD ---
     # Panneau semi-transparent
-    hud_panel = pygame.Surface((300, 150), pygame.SRCALPHA)
+    hud_panel = pygame.Surface((300, 210), pygame.SRCALPHA)
     hud_panel.fill((0, 0, 0, 120))
     screen.blit(hud_panel, (10, 10))
 
@@ -936,9 +958,20 @@ while running:
         pygame.draw.polygon(screen, (255, 50, 50), 
                            [(heart_x - 15, 85), (heart_x, 100), (heart_x + 15, 85)])
 
+    stamina_label = small_font.render("Stamina", True, (180, 200, 255))
+    screen.blit(stamina_label, (30, 120))
+    stamina_bar_bg = pygame.Rect(30, 150, 240, 20)
+    pygame.draw.rect(screen, (40, 40, 40), stamina_bar_bg, border_radius=6)
+    stamina_ratio = stamina / STAMINA_MAX if STAMINA_MAX else 0
+    fill_width = int(stamina_bar_bg.width * max(0, min(1, stamina_ratio)))
+    if fill_width > 0:
+        stamina_bar_fill = pygame.Rect(stamina_bar_bg.left, stamina_bar_bg.top, fill_width, stamina_bar_bg.height)
+        pygame.draw.rect(screen, (70, 170, 255), stamina_bar_fill, border_radius=6)
+    pygame.draw.rect(screen, (120, 180, 255), stamina_bar_bg, 2, border_radius=6)
+
     if is_invulnerable:
         inv_text = small_font.render("⚡ INVULNÉRABLE", True, (255, 255, 0))
-        screen.blit(inv_text, (30, 120))
+        screen.blit(inv_text, (30, 180))
 
     # Indicateur de cooldown spawn
     if monster_spawn_timer > 0:
@@ -987,7 +1020,5 @@ while running:
 
     pygame.display.flip()
     dt = clock.tick(FPS) / 1000
-    # Mémorise l'état de la touche saut pour détection d'appui (double saut)
-    jump_was_down = pygame.key.get_pressed()[pygame.K_SPACE]
 
 pygame.quit()
