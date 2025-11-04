@@ -5,36 +5,226 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Éditeur de niveaux</title>
   <style>
-    body { font-family: system-ui, Arial, sans-serif; margin: 0; display: grid; grid-template-columns: 360px 1fr; height: 100vh; }
-    header { grid-column: 1 / -1; padding: 10px 16px; background: #222; color: #fff; display: flex; align-items: center; gap: 8px; }
-    header h1 { font-size: 18px; margin: 0; }
-    .sidebar { overflow: auto; border-right: 1px solid #ddd; padding: 12px; display: flex; flex-direction: column; gap: 16px; }
-    .section { border: 1px solid #ddd; border-radius: 8px; padding: 10px; }
-    .section h2 { margin: 0 0 8px 0; font-size: 16px; }
-    label { display: block; font-size: 12px; color: #333; margin-top: 8px; }
-    input[type="number"], input[type="text"] { width: 100%; box-sizing: border-box; padding: 6px 8px; margin-top: 4px; }
-    button { padding: 6px 10px; border-radius: 6px; border: 1px solid #ccc; background: #f7f7f7; cursor: pointer; }
-    button.primary { background: #2563eb; color: white; border-color: #2563eb; }
-    button.danger { background: #dc2626; color: white; border-color: #dc2626; }
-    .row { display: flex; gap: 8px; align-items: center; }
-    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-    .platforms { display: flex; flex-direction: column; gap: 8px; max-height: 240px; overflow: auto; }
-    .platform { display: grid; grid-template-columns: repeat(4, 1fr) 32px; gap: 6px; border-bottom: 1px solid #ddd; }
-    .canvas-wrap { position: relative; height: calc(100vh - 60px); background: #eef6ff; }
-    canvas { width: 100%; height: 100%; display: block; background: linear-gradient(180deg, #7db3e8 0%, #cfe9ff 100%); }
-    .toolbar { position: absolute; top: 12px; left: 12px; display: flex; gap: 8px; background: rgba(255,255,255,0.9); padding: 8px 10px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,.08); }
-    small.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #555; }
-    .tag { padding: 2px 6px; border-radius: 999px; font-size: 11px; border: 1px solid #ddd; }
-    .tag.enemy { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
-    .list-headers { display: grid; gap: 6px; font-size: 12px; color: #555; padding: 0 2px; }
-    .list-headers.platform { grid-template-columns: repeat(4, 1fr) 32px; }
-    .list-headers.enemy { grid-template-columns: repeat(4, 1fr) 1fr 32px; }
-    .list-headers span { font-weight: 600; }
-    .enemy-type { display: inline-block; width: 60px; }
-    .enemy-type.basic { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
-    .enemy-type.patrol { background: #f7d2c4; color: #7a3e1c; border-color: #ffd7be; }
-    .enemy-type.shooter { background: #c4f7d2; color: #1c7a3e; border-color: #bef7d7; }
-    .enemy-type.flyer { background: #d2c4f7; color: #3e1c7a; border-color: #d7bef7; }
+    * { box-sizing: border-box; }
+    body { 
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; 
+      margin: 0; 
+      display: grid; 
+      grid-template-columns: 380px 1fr; 
+      height: 100vh; 
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      overflow: hidden;
+    }
+    header { 
+      grid-column: 1 / -1; 
+      padding: 16px 20px; 
+      background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); 
+      color: #fff; 
+      display: flex; 
+      align-items: center; 
+      gap: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      border-bottom: 2px solid rgba(255,255,255,0.1);
+    }
+    header h1 { 
+      font-size: 22px; 
+      margin: 0; 
+      font-weight: 600;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    }
+    .sidebar { 
+      overflow: auto; 
+      background: rgba(255,255,255,0.95);
+      backdrop-filter: blur(10px);
+      border-right: 2px solid rgba(255,255,255,0.2); 
+      padding: 20px; 
+      display: flex; 
+      flex-direction: column; 
+      gap: 20px;
+      box-shadow: 4px 0 20px rgba(0,0,0,0.1);
+    }
+    .sidebar::-webkit-scrollbar { width: 8px; }
+    .sidebar::-webkit-scrollbar-track { background: rgba(0,0,0,0.05); border-radius: 4px; }
+    .sidebar::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); border-radius: 4px; }
+    .sidebar::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.3); }
+    .section { 
+      border: 2px solid rgba(102, 126, 234, 0.2); 
+      border-radius: 16px; 
+      padding: 18px; 
+      background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
+      box-shadow: 0 8px 25px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.8);
+      transition: all 0.3s ease;
+    }
+    .section:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 35px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.9);
+      border-color: rgba(102, 126, 234, 0.4);
+    }
+    .section h2 { 
+      margin: 0 0 12px 0; 
+      font-size: 18px; 
+      font-weight: 600;
+      color: #1e3a8a;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    }
+    label { 
+      display: block; 
+      font-size: 13px; 
+      color: #374151; 
+      margin-top: 10px; 
+      font-weight: 500;
+    }
+    input[type="number"], input[type="text"], select { 
+      width: 100%; 
+      box-sizing: border-box; 
+      padding: 10px 12px; 
+      margin-top: 6px;
+      border: 2px solid #e5e7eb;
+      border-radius: 10px;
+      font-size: 14px;
+      transition: all 0.2s ease;
+      background: #ffffff;
+    }
+    input[type="number"]:focus, input[type="text"]:focus, select:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+      transform: translateY(-1px);
+    }
+    button { 
+      padding: 10px 16px; 
+      border-radius: 10px; 
+      border: 2px solid transparent; 
+      background: linear-gradient(145deg, #f8fafc 0%, #e2e8f0 100%); 
+      cursor: pointer;
+      font-weight: 500;
+      font-size: 14px;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+    }
+    button.primary { 
+      background: linear-gradient(145deg, #667eea 0%, #764ba2 100%); 
+      color: white; 
+      border-color: transparent;
+    }
+    button.primary:hover {
+      background: linear-gradient(145deg, #5a67d8 0%, #6b46c1 100%);
+    }
+    button.danger { 
+      background: linear-gradient(145deg, #f56565 0%, #e53e3e 100%); 
+      color: white; 
+      border-color: transparent;
+    }
+    button.danger:hover {
+      background: linear-gradient(145deg, #e53e3e 0%, #c53030 100%);
+    }
+    .row { display: flex; gap: 10px; align-items: center; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .platforms { 
+      display: flex; 
+      flex-direction: column; 
+      gap: 10px; 
+      max-height: 280px; 
+      overflow: auto;
+      padding: 8px;
+      background: rgba(0,0,0,0.02);
+      border-radius: 8px;
+    }
+    .platforms::-webkit-scrollbar { width: 6px; }
+    .platforms::-webkit-scrollbar-track { background: rgba(0,0,0,0.05); border-radius: 3px; }
+    .platforms::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); border-radius: 3px; }
+    .platform { 
+      display: grid; 
+      grid-template-columns: repeat(4, 1fr) 40px; 
+      gap: 8px; 
+      padding: 8px;
+      background: rgba(255,255,255,0.8);
+      border-radius: 8px;
+      border: 1px solid rgba(0,0,0,0.1);
+    }
+    .canvas-wrap { 
+      position: relative; 
+      height: calc(100vh - 80px); 
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      overflow: hidden;
+    }
+    canvas { 
+      width: 100%; 
+      height: 100%; 
+      display: block; 
+      background: linear-gradient(180deg, #87ceeb 0%, #e0f6ff 50%, #98fb98 100%);
+      cursor: crosshair;
+    }
+    .toolbar { 
+      position: absolute; 
+      top: 16px; 
+      left: 16px; 
+      display: flex; 
+      gap: 12px; 
+      background: rgba(255,255,255,0.95);
+      backdrop-filter: blur(10px);
+      padding: 12px 16px; 
+      border-radius: 16px; 
+      box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+      border: 2px solid rgba(255,255,255,0.3);
+    }
+    .navigation-help {
+      position: absolute;
+      bottom: 16px;
+      left: 16px;
+      background: rgba(30, 60, 114, 0.9);
+      color: white;
+      padding: 12px 16px;
+      border-radius: 12px;
+      font-size: 12px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+    small.mono { 
+      font-family: 'SF Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; 
+      color: #64748b; 
+      font-size: 12px;
+    }
+    .tag { 
+      padding: 4px 8px; 
+      border-radius: 20px; 
+      font-size: 11px; 
+      font-weight: 600;
+      border: 1px solid transparent;
+    }
+    .tag.enemy { 
+      background: linear-gradient(145deg, #fee2e2 0%, #fecaca 100%); 
+      color: #991b1b; 
+      border-color: #fca5a5;
+    }
+    .list-headers { 
+      display: grid; 
+      gap: 8px; 
+      font-size: 12px; 
+      color: #6b7280; 
+      padding: 0 4px;
+      font-weight: 600;
+    }
+    .list-headers.platform { grid-template-columns: repeat(4, 1fr) 40px; }
+    .list-headers.enemy { grid-template-columns: repeat(4, 1fr) 1fr 40px; }
+    .list-headers span { font-weight: 700; }
+    .enemy-type { 
+      display: inline-block; 
+      width: 70px; 
+      text-align: center;
+      padding: 2px 6px;
+      border-radius: 12px;
+      font-size: 10px;
+      font-weight: 600;
+    }
+    .enemy-type.basic { background: linear-gradient(145deg, #fee2e2 0%, #fecaca 100%); color: #991b1b; }
+    .enemy-type.patrol { background: linear-gradient(145deg, #fed7aa 0%, #fdba74 100%); color: #9a3412; }
+    .enemy-type.shooter { background: linear-gradient(145deg, #dcfce7 0%, #bbf7d0 100%); color: #166534; }
+    .enemy-type.flyer { background: linear-gradient(145deg, #e0e7ff 0%, #c7d2fe 100%); color: #3730a3; }
   </style>
 </head>
 <body>
@@ -146,8 +336,8 @@
 
   <div class="canvas-wrap">
     <div class="toolbar">
-      <small class="mono">Aperçu. Défilement horizontal: molette + Shift.</small>
-      <small class="mono">Zoom: Ctrl + molette.</small>
+      <small class="mono">🎮 Navigation: Flèches ou WASD</small>
+      <small class="mono">🔍 Zoom: Ctrl + molette</small>
       <small class="mono" id="mouseInfo"></small>
       <label class="mono" style="display:flex;align-items:center;gap:6px;margin-left:8px;">
         <input type="checkbox" id="snapToggle" checked>
@@ -157,6 +347,14 @@
         Pas
         <input type="number" id="snapStep" value="10" min="1" style="width:64px;">
       </label>
+    </div>
+    <div class="navigation-help">
+      <div><strong>🚀 Navigation Infinie</strong></div>
+      <div>• Flèches / WASD: Déplacer la vue</div>
+      <div>• Molette: Zoom</div>
+      <div>• Clic milieu + glisser: Panoramique</div>
+      <div>• Clic gauche: Ajouter/déplacer</div>
+      <div>• Clic droit: Supprimer</div>
     </div>
     <canvas id="view"></canvas>
   </div>
@@ -369,6 +567,61 @@
     let scrollX = 0, scrollY = 0;
     let dragging = null; // { type: 'platform'|'goal'|'spawn'|'pan', idx?: number, dx, dy }
 
+    // Navigation infinie avec le clavier
+    const keys = {};
+    const MOVE_SPEED = 200; // pixels par seconde
+    let lastTime = 0;
+
+    // Gestion des touches
+    window.addEventListener('keydown', (e) => {
+      // Empêcher le défilement de la page
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(e.code)) {
+        e.preventDefault();
+      }
+      keys[e.code] = true;
+    });
+
+    window.addEventListener('keyup', (e) => {
+      keys[e.code] = false;
+    });
+
+    // Boucle d'animation pour la navigation fluide
+    function updateNavigation(currentTime) {
+      if (lastTime === 0) lastTime = currentTime;
+      const deltaTime = (currentTime - lastTime) / 1000; // en secondes
+      lastTime = currentTime;
+
+      let moved = false;
+      const moveDistance = MOVE_SPEED * deltaTime;
+
+      // Navigation avec les flèches ou WASD
+      if (keys['ArrowLeft'] || keys['KeyA']) {
+        scrollX += moveDistance;
+        moved = true;
+      }
+      if (keys['ArrowRight'] || keys['KeyD']) {
+        scrollX -= moveDistance;
+        moved = true;
+      }
+      if (keys['ArrowUp'] || keys['KeyW']) {
+        scrollY += moveDistance;
+        moved = true;
+      }
+      if (keys['ArrowDown'] || keys['KeyS']) {
+        scrollY -= moveDistance;
+        moved = true;
+      }
+
+      if (moved) {
+        draw();
+      }
+
+      requestAnimationFrame(updateNavigation);
+    }
+
+    // Démarrer la boucle d'animation
+    requestAnimationFrame(updateNavigation);
+
     function resize() {
       const dpr = Math.max(1, window.devicePixelRatio || 1);
       els.view.width = Math.floor(els.view.clientWidth * dpr);
@@ -380,13 +633,28 @@
 
     els.view.addEventListener('wheel', (e) => {
       if (e.ctrlKey) {
+        // Zoom avec Ctrl + molette
         e.preventDefault();
         const delta = Math.sign(e.deltaY);
-        zoom = Math.min(3, Math.max(0.25, zoom * (delta > 0 ? 0.9 : 1.1)));
+        const rect = els.view.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        // Zoom centré sur la souris
+        const worldX = (mouseX - scrollX) / zoom;
+        const worldY = (mouseY - scrollY) / zoom;
+
+        const newZoom = Math.min(5, Math.max(0.1, zoom * (delta > 0 ? 0.9 : 1.1)));
+
+        scrollX = mouseX - worldX * newZoom;
+        scrollY = mouseY - worldY * newZoom;
+        zoom = newZoom;
+
         draw();
-      } else if (e.shiftKey) {
+      } else {
+        // Déplacement vertical avec la molette normale
         e.preventDefault();
-        scrollX += e.deltaY;
+        scrollY += e.deltaY * 0.5;
         draw();
       }
     }, { passive: false });
@@ -498,32 +766,58 @@
       ctx.translate(scrollX, scrollY);
       ctx.scale(zoom, zoom);
       ctx.clearRect(-scrollX/zoom, -scrollY/zoom, w/zoom, h/zoom);
-      const g = ctx.createLinearGradient(0, -scrollY/zoom, 0, h/zoom - scrollY/zoom);
-      g.addColorStop(0, '#a9d3ff');
-      g.addColorStop(1, '#e6f2ff');
+
+      // Dégradé de ciel dynamique
+      const g = ctx.createLinearGradient(0, -scrollY/zoom - 500, 0, h/zoom - scrollY/zoom + 500);
+      g.addColorStop(0, '#87ceeb');
+      g.addColorStop(0.3, '#b8e6ff');
+      g.addColorStop(0.7, '#e0f6ff');
+      g.addColorStop(1, '#98fb98');
       ctx.fillStyle = g;
-      ctx.fillRect(-scrollX/zoom, -scrollY/zoom, w/zoom, h/zoom);
+      ctx.fillRect(-scrollX/zoom - 1000, -scrollY/zoom - 1000, w/zoom + 2000, h/zoom + 2000);
       const step = 50;
+      const viewLeft = -scrollX/zoom - 100;
+      const viewRight = viewLeft + w/zoom + 200;
+      const viewTop = -scrollY/zoom - 100;
+      const viewBottom = viewTop + h/zoom + 200;
+
       // Lignes verticales (avec lignes majeures tous les 250px)
-      for (let x = -scrollX/zoom % step; x < w/zoom; x += step) {
-        const major = Math.round((x + scrollX/zoom)) % 250 === 0;
-        ctx.strokeStyle = major ? '#b7d3ff' : '#d7eaff';
-        ctx.lineWidth = major ? 1.2 : 1;
+      const startX = Math.floor(viewLeft / step) * step;
+      for (let x = startX; x <= viewRight; x += step) {
+        const major = x % 250 === 0;
+        ctx.strokeStyle = major ? 'rgba(183, 211, 255, 0.8)' : 'rgba(215, 234, 255, 0.5)';
+        ctx.lineWidth = major ? 1.5 : 0.8;
         ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, h/zoom);
+        ctx.moveTo(x, viewTop);
+        ctx.lineTo(x, viewBottom);
         ctx.stroke();
       }
+
       // Lignes horizontales (avec lignes majeures tous les 250px)
-      for (let y = -scrollY/zoom % step; y < h/zoom; y += step) {
-        const major = Math.round((y + scrollY/zoom)) % 250 === 0;
-        ctx.strokeStyle = major ? '#b7d3ff' : '#d7eaff';
-        ctx.lineWidth = major ? 1.2 : 1;
+      const startY = Math.floor(viewTop / step) * step;
+      for (let y = startY; y <= viewBottom; y += step) {
+        const major = y % 250 === 0;
+        ctx.strokeStyle = major ? 'rgba(183, 211, 255, 0.8)' : 'rgba(215, 234, 255, 0.5)';
+        ctx.lineWidth = major ? 1.5 : 0.8;
         ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(w/zoom, y);
+        ctx.moveTo(viewLeft, y);
+        ctx.lineTo(viewRight, y);
         ctx.stroke();
       }
+
+      // Axes de coordonnées (0,0)
+      ctx.strokeStyle = 'rgba(255, 100, 100, 0.7)';
+      ctx.lineWidth = 2;
+      // Axe X
+      ctx.beginPath();
+      ctx.moveTo(viewLeft, 0);
+      ctx.lineTo(viewRight, 0);
+      ctx.stroke();
+      // Axe Y
+      ctx.beginPath();
+      ctx.moveTo(0, viewTop);
+      ctx.lineTo(0, viewBottom);
+      ctx.stroke();
       ctx.restore();
     }
 
@@ -536,19 +830,43 @@
       ctx.translate(scrollX, scrollY);
       ctx.scale(zoom, zoom);
 
-      // Ground
-      ctx.fillStyle = '#2e8b57';
+      // Ground avec dégradé
+      const groundGradient = ctx.createLinearGradient(0, lvl.ground.y, 0, lvl.ground.y + 100);
+      groundGradient.addColorStop(0, '#3d8b3d');
+      groundGradient.addColorStop(0.3, '#2e8b57');
+      groundGradient.addColorStop(1, '#1e5e3e');
+      ctx.fillStyle = groundGradient;
       ctx.fillRect(lvl.ground.start_x, lvl.ground.y, lvl.ground.end_x - lvl.ground.start_x, 100);
       ctx.strokeStyle = '#1b5e3b';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 3;
       ctx.strokeRect(lvl.ground.start_x, lvl.ground.y, Math.max(1, lvl.ground.end_x - lvl.ground.start_x), 100);
 
-      // Platforms
-      ctx.fillStyle = '#654321';
-      ctx.strokeStyle = '#8b5a2b';
+      // Platforms avec dégradé et ombres
       lvl.platforms.forEach(p => {
+        // Ombre
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+        ctx.fillRect(p.x + 3, p.y + 3, p.w, p.h);
+
+        // Plateforme avec dégradé
+        const platformGradient = ctx.createLinearGradient(0, p.y, 0, p.y + p.h);
+        platformGradient.addColorStop(0, '#8b7355');
+        platformGradient.addColorStop(0.5, '#654321');
+        platformGradient.addColorStop(1, '#4a2c17');
+        ctx.fillStyle = platformGradient;
         ctx.fillRect(p.x, p.y, p.w, p.h);
+
+        // Bordure
+        ctx.strokeStyle = '#8b5a2b';
+        ctx.lineWidth = 2;
         ctx.strokeRect(p.x, p.y, p.w, p.h);
+
+        // Highlight sur le dessus
+        ctx.strokeStyle = 'rgba(139, 115, 85, 0.8)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.x + p.w, p.y);
+        ctx.stroke();
       });
 
       // Enemies
@@ -578,29 +896,74 @@
         });
       }
 
-      // Goal
-      ctx.fillStyle = '#b8860b';
-      ctx.fillRect(lvl.goal.x, lvl.goal.y, lvl.goal.w, lvl.goal.h);
-      ctx.strokeStyle = '#8b6508';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(lvl.goal.x, lvl.goal.y, lvl.goal.w, lvl.goal.h);
-      ctx.fillStyle = 'rgba(0,0,0,0.7)';
-      ctx.font = '12px ui-monospace, monospace';
-      ctx.fillText('Porte', lvl.goal.x, lvl.goal.y - 6);
+      // Goal (porte) avec effet brillant
+      // Ombre
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+      ctx.fillRect(lvl.goal.x + 4, lvl.goal.y + 4, lvl.goal.w, lvl.goal.h);
 
-      // Spawn
-      ctx.fillStyle = '#1f6feb';
+      // Porte avec dégradé doré
+      const goalGradient = ctx.createLinearGradient(0, lvl.goal.y, 0, lvl.goal.y + lvl.goal.h);
+      goalGradient.addColorStop(0, '#ffd700');
+      goalGradient.addColorStop(0.3, '#b8860b');
+      goalGradient.addColorStop(0.7, '#b8860b');
+      goalGradient.addColorStop(1, '#8b6508');
+      ctx.fillStyle = goalGradient;
+      ctx.fillRect(lvl.goal.x, lvl.goal.y, lvl.goal.w, lvl.goal.h);
+
+      // Bordure dorée
+      ctx.strokeStyle = '#8b6508';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(lvl.goal.x, lvl.goal.y, lvl.goal.w, lvl.goal.h);
+
+      // Poignée de porte
+      ctx.fillStyle = '#654321';
       ctx.beginPath();
-      ctx.arc(lvl.spawn.x, lvl.spawn.y, 10, 0, Math.PI * 2);
+      ctx.arc(lvl.goal.x + lvl.goal.w * 0.8, lvl.goal.y + lvl.goal.h * 0.5, 4, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = 'rgba(31,110,235,0.6)';
+
+      // Label avec fond
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+      ctx.fillRect(lvl.goal.x - 5, lvl.goal.y - 25, 50, 16);
+      ctx.fillStyle = '#ffd700';
+      ctx.font = 'bold 12px ui-monospace, monospace';
+      ctx.fillText('🚪 Porte', lvl.goal.x, lvl.goal.y - 10);
+
+      // Spawn avec effet pulsant
+      const time = Date.now() / 1000;
+      const pulse = 0.8 + 0.2 * Math.sin(time * 3);
+
+      // Cercles concentriques
+      for (let i = 3; i >= 0; i--) {
+        const alpha = (1 - i * 0.2) * 0.3;
+        ctx.fillStyle = `rgba(31, 111, 235, ${alpha})`;
+        ctx.beginPath();
+        ctx.arc(lvl.spawn.x, lvl.spawn.y, (18 + i * 8) * pulse, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Spawn principal
+      const spawnGradient = ctx.createRadialGradient(lvl.spawn.x, lvl.spawn.y, 0, lvl.spawn.x, lvl.spawn.y, 12);
+      spawnGradient.addColorStop(0, '#4fc3f7');
+      spawnGradient.addColorStop(0.7, '#1f6feb');
+      spawnGradient.addColorStop(1, '#0d47a1');
+      ctx.fillStyle = spawnGradient;
+      ctx.beginPath();
+      ctx.arc(lvl.spawn.x, lvl.spawn.y, 12 * pulse, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Bordure
+      ctx.strokeStyle = '#0d47a1';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(lvl.spawn.x, lvl.spawn.y, 14, 0, Math.PI * 2);
+      ctx.arc(lvl.spawn.x, lvl.spawn.y, 12 * pulse, 0, Math.PI * 2);
       ctx.stroke();
-      ctx.fillStyle = 'rgba(0,0,0,0.7)';
-      ctx.font = '12px ui-monospace, monospace';
-      ctx.fillText('Spawn', lvl.spawn.x + 18, lvl.spawn.y + 4);
+
+      // Label avec fond
+      ctx.fillStyle = 'rgba(13, 71, 161, 0.9)';
+      ctx.fillRect(lvl.spawn.x + 15, lvl.spawn.y - 12, 55, 16);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 12px ui-monospace, monospace';
+      ctx.fillText('🎯 Spawn', lvl.spawn.x + 18, lvl.spawn.y - 2);
 
       ctx.restore();
     }
