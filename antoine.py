@@ -28,6 +28,10 @@ STAMINA_JUMP_COST = 10
 STAMINA_REGEN_DELAY = 4.0
 STAMINA_REGEN_INTERVAL = 0.5
 STAMINA_REGEN_AMOUNT = 5
+DOUBLE_JUMP_COST = 15
+DASH_COST = 10
+DASH_SPEED = 900
+DASH_DURATION = 0.2
 FPS = 60
 MAX_MONSTERS = 3
 MONSTER_SPAWN_COOLDOWN = 2.0  # Secondes entre chaque spawn
@@ -156,6 +160,11 @@ shoot_recoil = 0.0
 stamina = STAMINA_MAX
 stamina_idle_timer = 0.0
 stamina_regen_timer = 0.0
+air_jumps_left = 1
+jump_was_pressed = False
+dash_was_pressed = False
+dash_timer = 0.0
+dash_direction = 1
 
 player_pos.y = GROUND_Y - (head_radius + body_height + leg_height)
 spawn_point = player_pos.copy()
@@ -339,6 +348,11 @@ while running:
                     stamina = STAMINA_MAX
                     stamina_idle_timer = 0.0
                     stamina_regen_timer = 0.0
+                    air_jumps_left = 1
+                    jump_was_pressed = False
+                    dash_was_pressed = False
+                    dash_timer = 0.0
+                    dash_direction = 1
                     game_state = "PLAYING"
                 elif quit_rect.collidepoint(event.pos):
                     running = False
@@ -397,6 +411,11 @@ while running:
                 stamina = STAMINA_MAX
                 stamina_idle_timer = 0.0
                 stamina_regen_timer = 0.0
+                air_jumps_left = 1
+                jump_was_pressed = False
+                dash_was_pressed = False
+                dash_timer = 0.0
+                dash_direction = 1
                 game_state = "PLAYING"
             elif game_state == "MENU" and event.key in (pygame.K_LEFT, pygame.K_RIGHT):
                 # Changer de niveau sélectionné dans le menu
@@ -508,11 +527,42 @@ while running:
                 player_vel_y = 0
                 break
 
-    if keys[pygame.K_SPACE] and on_ground and stamina >= STAMINA_JUMP_COST:
-        player_vel_y = JUMP_FORCE
-        stamina = max(0, stamina - STAMINA_JUMP_COST)
-        stamina_idle_timer = 0.0
-        stamina_regen_timer = 0.0
+    if on_ground:
+        air_jumps_left = 1
+
+    space_pressed = keys[pygame.K_SPACE]
+    if space_pressed and not jump_was_pressed:
+        if on_ground and stamina >= STAMINA_JUMP_COST:
+            player_vel_y = JUMP_FORCE
+            stamina = max(0, stamina - STAMINA_JUMP_COST)
+            stamina_idle_timer = 0.0
+            stamina_regen_timer = 0.0
+            air_jumps_left = 1
+        elif not on_ground and air_jumps_left > 0 and stamina >= DOUBLE_JUMP_COST:
+            player_vel_y = JUMP_FORCE
+            stamina = max(0, stamina - DOUBLE_JUMP_COST)
+            stamina_idle_timer = 0.0
+            stamina_regen_timer = 0.0
+            air_jumps_left -= 1
+
+    dash_pressed = keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]
+    if dash_pressed and not dash_was_pressed and dash_timer <= 0 and stamina >= DASH_COST:
+        desired_dir = 0
+        if keys[pygame.K_q] or keys[pygame.K_LEFT]:
+            desired_dir = -1
+        elif keys[pygame.K_d] or keys[pygame.K_RIGHT]:
+            desired_dir = 1
+        else:
+            desired_dir = direction
+        if desired_dir != 0:
+            dash_direction = desired_dir
+            dash_timer = DASH_DURATION
+            stamina = max(0, stamina - DASH_COST)
+            stamina_idle_timer = 0.0
+            stamina_regen_timer = 0.0
+
+    jump_was_pressed = space_pressed
+    dash_was_pressed = dash_pressed
 
     player_vel_y += GRAVITY * dt
     player_pos.y += player_vel_y * dt
@@ -532,6 +582,10 @@ while running:
                     player_pos.y = plat_top - (head_radius + body_height + leg_height)
                     player_vel_y = 0
                     break
+
+    if dash_timer > 0:
+        player_pos.x += dash_direction * DASH_SPEED * dt
+        dash_timer = max(0.0, dash_timer - dt)
 
     player_pos.x = max(head_radius, player_pos.x)
 
