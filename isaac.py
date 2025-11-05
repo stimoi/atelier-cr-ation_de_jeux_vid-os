@@ -229,7 +229,7 @@ def _default_level():
             {"x": 100, "y": 560, "w": 200, "h": 20},
             {"x": 380, "y": 480, "w": 180, "h": 20},
             {"x": 620, "y": 420, "w": 160, "h": 20},
-            {"x": 860, "y": 360, "w": 140, "h": 20},
+            {"x": 860, "y": 360, "w": 40, "h": 20},
             {"x": 1060, "y": 300, "w": 180, "h": 20},
             {"x": 1300, "y": 200, "w": 250, "h": 20},
             {"x": 1600, "y": 600, "w": 100, "h": 20},
@@ -243,20 +243,72 @@ def _default_level():
     }
 
 levels = []
-levels_path = os.path.join(os.path.dirname(__file__), "levels.json")
-try:
-    if os.path.isfile(levels_path):
-        with open(levels_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            if isinstance(data, dict) and isinstance(data.get("levels"), list) and data["levels"]:
-                levels = data["levels"]
-except Exception:
-    levels = []
+alt_levels_dir = os.path.join(os.path.dirname(__file__), "levels.json")
+
+def _load_levels_dir(d):
+    out = []
+    if not os.path.isdir(d):
+        return out
+    try:
+        files = [f for f in os.listdir(d) if f.lower().endswith(".json")]
+        files.sort()
+        for name in files:
+            p = os.path.join(d, name)
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, dict) and isinstance(data.get("levels"), list):
+                    out.extend(data["levels"])
+                elif isinstance(data, dict):
+                    out.append(data)
+                elif isinstance(data, list):
+                    out.extend(data)
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return out
+
+def _compute_dir_mtime(d):
+    m = 0.0
+    try:
+        for name in os.listdir(d):
+            p = os.path.join(d, name)
+            try:
+                m = max(m, os.path.getmtime(p))
+            except Exception:
+                pass
+    except Exception:
+        m = 0.0
+    return m
+
+if os.path.isdir(alt_levels_dir):
+    levels = _load_levels_dir(alt_levels_dir)
+    levels_mtime = _compute_dir_mtime(alt_levels_dir)
+else:
+    levels = [_default_level()]
+    levels_mtime = 0.0
 
 if not levels:
     levels = [_default_level()]
 
 selected_level_idx = 0
+reload_check_timer = 0.0
+
+def reload_levels_from_disk():
+    global levels, selected_level_idx, levels_mtime
+    if not os.path.isdir(alt_levels_dir):
+        return False
+    m = _compute_dir_mtime(alt_levels_dir)
+    if m == levels_mtime:
+        return False
+    new_levels = _load_levels_dir(alt_levels_dir)
+    if new_levels:
+        levels = new_levels
+        selected_level_idx = min(selected_level_idx, len(levels) - 1)
+        levels_mtime = m
+        return True
+    return False
 
 platforms = []
 goal_rect = pygame.Rect(0, 0, 0, 0)
@@ -286,6 +338,27 @@ def apply_level(level):
 # Appliquer le niveau initial
 apply_level(levels[selected_level_idx])
 init_clouds()
+
+# Collisions utilitaires: rect joueur et dégagement spawn
+
+def _player_rect_at(x, y):
+    return pygame.Rect(int(x - head_radius), int(y - head_radius), head_radius*2, head_radius*2 + body_height + leg_height)
+
+def ensure_player_not_stuck():
+    global player_pos, player_vel_y
+    # Pousse le joueur vers le haut jusqu'à sortir de collisions (plateformes/sol)
+    for _ in range(300):
+        rect = _player_rect_at(player_pos.x, player_pos.y)
+        blocked_ground = (rect.bottom > GROUND_Y and GROUND_START_X <= player_pos.x <= GROUND_END_X)
+        hit = None
+        for plat in platforms:
+            if rect.colliderect(plat):
+                hit = plat
+                break
+        if not blocked_ground and not hit:
+            break
+        player_pos.y -= 1
+    player_vel_y = 0
 
 # === Score, Vies, Victoire ===
 score = 0
@@ -330,15 +403,14 @@ while running:
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if game_state == "MENU":
                 if play_rect.collidepoint(event.pos):
-                    # Reset et démarrage du jeu
                     score = 0
                     lives = 3
                     invuln_timer = 0.0
                     is_invulnerable = False
                     victory = False
-                    # Appliquer le niveau sélectionné au démarrage
                     apply_level(levels[selected_level_idx])
                     player_pos = spawn_point.copy()
+                    ensure_player_not_stuck()
                     player_vel_y = 0
                     camera_offset = pygame.Vector2(0, 0)
                     monsters = [spawn_monster() for _ in range(MAX_MONSTERS)]
@@ -364,26 +436,20 @@ while running:
                 elif pause_quit_rect.collidepoint(event.pos):
                     running = False
             elif game_state == "PLAYING":
-                # Tir vers la souris
                 mouse_world_x = event.pos[0] + camera_offset.x
                 mouse_world_y = event.pos[1] + camera_offset.y
-                
                 dx = mouse_world_x - player_pos.x
                 dy = mouse_world_y - player_pos.y
                 distance = math.sqrt(dx**2 + dy**2)
-                
                 if distance > 0:
                     dir_x = dx / distance
                     dir_y = dy / distance
-                    
                     proj_x = player_pos.x + dir_x * (head_radius + 10)
                     proj_y = player_pos.y + dir_y * (head_radius + 10)
-                    
                     projectiles.append({
                         "pos": pygame.Vector2(proj_x, proj_y),
                         "vel": pygame.Vector2(dir_x * PROJECTILE_SPEED, dir_y * PROJECTILE_SPEED)
                     })
-                    # Animation de recul et effet visuel
                     shoot_recoil = 0.12
                     create_particles((proj_x, proj_y), (255, 230, 100), 6)
         elif event.type == pygame.KEYDOWN and game_state == "PAUSED":
@@ -392,16 +458,22 @@ while running:
             elif event.key == pygame.K_m:
                 game_state = "MENU"
         elif event.type == pygame.KEYDOWN:
-            if game_state == "MENU" and event.key in (pygame.K_RETURN, pygame.K_SPACE):
-                # Lancer le jeu via clavier
+            if event.key in (pygame.K_F5, pygame.K_l):
+                if reload_levels_from_disk():
+                    apply_level(levels[selected_level_idx])
+                    if game_state == "PLAYING":
+                        player_pos = spawn_point.copy()
+                        ensure_player_not_stuck()
+                        player_vel_y = 0
+            elif game_state == "MENU" and event.key in (pygame.K_RETURN, pygame.K_SPACE):
                 score = 0
                 lives = 3
                 invuln_timer = 0.0
                 is_invulnerable = False
                 victory = False
-                # Appliquer le niveau sélectionné au démarrage
                 apply_level(levels[selected_level_idx])
                 player_pos = spawn_point.copy()
+                ensure_player_not_stuck()
                 player_vel_y = 0
                 camera_offset = pygame.Vector2(0, 0)
                 monsters = [spawn_monster() for _ in range(MAX_MONSTERS)]
@@ -418,12 +490,10 @@ while running:
                 dash_direction = 1
                 game_state = "PLAYING"
             elif game_state == "MENU" and event.key in (pygame.K_LEFT, pygame.K_RIGHT):
-                # Changer de niveau sélectionné dans le menu
                 if event.key == pygame.K_LEFT:
                     selected_level_idx = (selected_level_idx - 1) % len(levels)
                 else:
                     selected_level_idx = (selected_level_idx + 1) % len(levels)
-                # Pré-appliquer pour que spawn/sol soient prêts au lancement
                 apply_level(levels[selected_level_idx])
 
     # --- MENU PRINCIPAL ---
@@ -499,32 +569,29 @@ while running:
     # Mouvements
     stamina_idle_timer += dt
     keys = pygame.key.get_pressed()
-    moving = False
+
+    # Entrée déplacement horizontal (sera résolu avec collisions)
+    move_dir = 0
     if keys[pygame.K_q] or keys[pygame.K_LEFT]:
-        player_pos.x -= MOVE_SPEED * dt
-        direction = -1
-        moving = True
+        move_dir -= 1
     if keys[pygame.K_d] or keys[pygame.K_RIGHT]:
-        player_pos.x += MOVE_SPEED * dt
-        direction = 1
-        moving = True
-    if moving:
+        move_dir += 1
+    if move_dir != 0:
+        direction = -1 if move_dir < 0 else 1
         walk_cycle += 10 * dt
     else:
         walk_cycle = 0
 
-    # Détection sol/plateforme
+    # Saut / dash (prépare états)
     feet_y = player_pos.y + head_radius + body_height + leg_height
     on_ground = False
-    # Sol infini limité en X
+    # Détection sol simple (état initial)
     if feet_y >= GROUND_Y - 0.1 and GROUND_START_X <= player_pos.x <= GROUND_END_X:
         on_ground = True
     else:
         for plat in platforms:
             if plat.left - 5 < player_pos.x < plat.right + 5 and abs(feet_y - plat.top) <= 6:
                 on_ground = True
-                player_pos.y = plat.top - (head_radius + body_height + leg_height)
-                player_vel_y = 0
                 break
 
     if on_ground:
@@ -548,7 +615,9 @@ while running:
     dash_pressed = keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]
     if dash_pressed and not dash_was_pressed and dash_timer <= 0 and stamina >= DASH_COST:
         desired_dir = 0
-        if keys[pygame.K_q] or keys[pygame.K_LEFT]:
+        if move_dir != 0:
+            desired_dir = direction
+        elif keys[pygame.K_q] or keys[pygame.K_LEFT]:
             desired_dir = -1
         elif keys[pygame.K_d] or keys[pygame.K_RIGHT]:
             desired_dir = 1
@@ -564,28 +633,75 @@ while running:
     jump_was_pressed = space_pressed
     dash_was_pressed = dash_pressed
 
-    player_vel_y += GRAVITY * dt
-    player_pos.y += player_vel_y * dt
+    # --- Collision solide: résolution par axes (X puis Y) ---
+    player_width = head_radius * 2
+    player_height = head_radius * 2 + body_height + leg_height
 
-    feet_y = player_pos.y + head_radius + body_height + leg_height
-    if feet_y > GROUND_Y and GROUND_START_X <= player_pos.x <= GROUND_END_X:
-        player_pos.y = GROUND_Y - (head_radius + body_height + leg_height)
-        player_vel_y = 0
-
-    player_rect = pygame.Rect(int(player_pos.x - head_radius), int(player_pos.y - head_radius), 
-                              head_radius*2, head_radius*2 + body_height + leg_height)
-    if player_vel_y >= 0:
-        for plat in platforms:
-            if player_rect.colliderect(plat):
-                plat_top = plat.top
-                if feet_y - player_vel_y * dt <= plat_top:
-                    player_pos.y = plat_top - (head_radius + body_height + leg_height)
-                    player_vel_y = 0
-                    break
-
+    # Horizontal (inclut le dash)
+    dx = move_dir * MOVE_SPEED * dt
     if dash_timer > 0:
-        player_pos.x += dash_direction * DASH_SPEED * dt
+        dx += dash_direction * DASH_SPEED * dt
         dash_timer = max(0.0, dash_timer - dt)
+    prev_x = player_pos.x
+    prev_y = player_pos.y
+    next_x = prev_x + dx
+    rect_after_x = pygame.Rect(int(next_x - head_radius), int(prev_y - head_radius), player_width, player_height)
+    if dx != 0:
+        for plat in platforms:
+            if rect_after_x.colliderect(plat):
+                prev_left = prev_x - head_radius
+                prev_right = prev_x + head_radius
+                if dx > 0 and prev_right <= plat.left:
+                    next_x = plat.left - head_radius
+                elif dx < 0 and prev_left >= plat.right:
+                    next_x = plat.right + head_radius
+                # stop movement on collision
+                break
+    player_pos.x = next_x
+
+    # Limites monde simples
+    if player_pos.x < head_radius:
+        player_pos.x = head_radius
+    # (optionnel) borner à droite selon terrain: laisser libre pour l'instant
+
+    # Vertical: gravité + collisions sol/plafond/plateformes
+    player_vel_y += GRAVITY * dt
+    dy = player_vel_y * dt
+    prev_y = player_pos.y
+    next_y = prev_y + dy
+
+    # Sol global
+    feet_next = next_y + head_radius + body_height + leg_height
+    if player_vel_y >= 0 and feet_next > GROUND_Y and GROUND_START_X <= player_pos.x <= GROUND_END_X:
+        next_y = GROUND_Y - (head_radius + body_height + leg_height)
+        player_vel_y = 0
+        on_ground = True
+    else:
+        # Plateformes
+        rect_after_y = pygame.Rect(int(player_pos.x - head_radius), int(next_y - head_radius), player_width, player_height)
+        hit = None
+        for plat in platforms:
+            if rect_after_y.colliderect(plat):
+                hit = plat
+                break
+        if hit is not None:
+            top = hit.top
+            bottom = hit.bottom
+            prev_bottom = prev_y + head_radius + body_height + leg_height
+            prev_top = prev_y - head_radius
+            if player_vel_y >= 0 and prev_bottom <= top + 2:
+                # Atterrissage par dessus
+                next_y = top - (head_radius + body_height + leg_height)
+                player_vel_y = 0
+                on_ground = True
+            elif player_vel_y < 0 and prev_top >= bottom - 2:
+                # Heurt du dessous (plafond)
+                next_y = bottom + head_radius
+                player_vel_y = 0
+            else:
+                # Collision latérale résiduelle, rien à faire ici (déjà gérée à l'axe X)
+                pass
+    player_pos.y = next_y
 
     player_pos.x = max(head_radius, player_pos.x)
 
@@ -622,7 +738,16 @@ while running:
         player_vel_y = 0
         create_particles(player_pos, (255, 100, 100), 15)
 
-    # Caméra
+    reload_check_timer += dt
+    if reload_check_timer >= 1.0:
+        if reload_levels_from_disk():
+            apply_level(levels[selected_level_idx])
+            if game_state == "PLAYING":
+                player_pos = spawn_point.copy()
+                ensure_player_not_stuck()
+                player_vel_y = 0
+        reload_check_timer = 0.0
+
     target_x = player_pos.x - SCREEN_WIDTH // 2
     target_y = player_pos.y - SCREEN_HEIGHT // 2
     camera_offset.x += (target_x - camera_offset.x) * CAMERA_LAG
