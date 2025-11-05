@@ -3,6 +3,7 @@ import random
 import math
 import json
 import os
+from copy import deepcopy
 
 # === Initialisation ===
 pygame.init()
@@ -12,6 +13,91 @@ font = pygame.font.SysFont(None, 48)
 small_font = pygame.font.SysFont(None, 32)
 title_font = pygame.font.SysFont(None, 96)
 fword_font = pygame.font.SysFont(None, 180)
+
+tutorial_texts = {}
+current_tutorial_texts = []
+tutorial_visible = False
+tutorial_index = 0
+tutorial_button_rect = None
+tutorial_image = None
+
+def _normalize_key(value):
+    return "".join(ch for ch in str(value).lower() if ch.isalnum())
+
+def _extract_text(entry):
+    if isinstance(entry, str):
+        text = entry.strip()
+        return text if text else None
+    if isinstance(entry, dict):
+        for field in ("texte", "text", "message", "content"):
+            if field in entry and isinstance(entry[field], str):
+                text = entry[field].strip()
+                if text:
+                    return text
+    return None
+
+def _coerce_text_list(value):
+    texts = []
+    if isinstance(value, list):
+        for item in value:
+            text = _extract_text(item)
+            if text:
+                texts.append(text)
+    elif isinstance(value, dict):
+        try:
+            items = sorted(value.items(), key=lambda kv: int(kv[0]))
+        except Exception:
+            items = value.items()
+        for _, item in items:
+            text = _extract_text(item)
+            if text:
+                texts.append(text)
+    else:
+        text = _extract_text(value)
+        if text:
+            texts.append(text)
+    return texts
+
+def load_tutorial_texts():
+    texts = {}
+    tutoriel_dir = os.path.join(os.path.dirname(__file__), "tutoriel")
+    texte_path = os.path.join(tutoriel_dir, "texte.json")
+    if not os.path.isfile(texte_path):
+        return texts
+    try:
+        with open(texte_path, "r", encoding="utf-8") as fp:
+            data = json.load(fp)
+    except Exception:
+        return texts
+
+    if isinstance(data, dict):
+        for key, value in data.items():
+            entries = _coerce_text_list(value)
+            if entries:
+                texts[_normalize_key(key)] = entries
+    else:
+        entries = _coerce_text_list(data)
+        if entries:
+            texts[_normalize_key("niveau1")] = entries
+    return texts
+
+def load_tutorial_image():
+    tutoriel_dir = os.path.join(os.path.dirname(__file__), "tutoriel")
+    image_path = os.path.join(tutoriel_dir, "photo.png")
+    if os.path.isfile(image_path):
+        try:
+            return pygame.image.load(image_path).convert_alpha()
+        except Exception:
+            pass
+    placeholder = pygame.Surface((200, 200), pygame.SRCALPHA)
+    placeholder.fill((210, 210, 210, 255))
+    pygame.draw.rect(placeholder, (160, 160, 160, 255), placeholder.get_rect(), 6, border_radius=12)
+    pygame.draw.line(placeholder, (160, 160, 160, 255), (30, 30), (170, 170), 6)
+    pygame.draw.line(placeholder, (160, 160, 160, 255), (170, 30), (30, 170), 6)
+    return placeholder
+
+tutorial_texts = load_tutorial_texts()
+tutorial_image = load_tutorial_image()
 
 # === Constantes ===
 SCREEN_WIDTH, SCREEN_HEIGHT = screen.get_size()
@@ -216,42 +302,113 @@ def spawn_monster():
     data.update(extra)
     return data
 
-monsters = [spawn_monster() for _ in range(MAX_MONSTERS)]
+MONSTER_TYPE_DEFAULTS = {
+    "tank": {"radius": 32, "speed": 60, "hp": 3, "dir": 1},
+    "fast": {"radius": 18, "speed": 140, "hp": 1, "dir": 1},
+    "flyer": {"radius": 22, "speed": 110, "hp": 1, "dir": 1},
+    "basic": {"radius": 20, "speed": 100, "hp": 1, "dir": 1},
+}
+
+level_enemy_configs = []
+current_monster_cap = MAX_MONSTERS
+monsters = []
+
+
+def _canonical_monster_type(raw_type):
+    if not raw_type:
+        return "basic"
+    t = str(raw_type).lower()
+    if t in MONSTER_TYPE_DEFAULTS:
+        return t
+    if t in ("walker", "ground"):
+        return "basic"
+    return "basic"
+
+
+def create_monster_from_config(config, template_id=None):
+    cfg = deepcopy(config)
+    m_type = _canonical_monster_type(cfg.get("type"))
+    defaults = MONSTER_TYPE_DEFAULTS[m_type]
+
+    x = float(cfg.get("x", 0))
+    y = float(cfg.get("y", 0))
+    width = cfg.get("w") or cfg.get("width")
+    height = cfg.get("h") or cfg.get("height")
+
+    radius = cfg.get("radius")
+    if radius is None:
+        if width and height:
+            radius = max(width, height) / 2
+        else:
+            radius = defaults["radius"]
+
+    speed = cfg.get("speed", defaults["speed"])
+    hp = int(cfg.get("hp", defaults["hp"]))
+    dir_val = cfg.get("dir", defaults["dir"])
+    direction = -1 if float(dir_val) < 0 else 1
+
+    monster = {
+        "pos": pygame.Vector2(x, y),
+        "dir": direction,
+        "type": m_type,
+        "radius": radius,
+        "speed": speed,
+        "hp": hp,
+        "hit_flash": 0.0,
+    }
+
+    if m_type == "flyer":
+        base_y = float(cfg.get("base_y", y))
+        monster.update({
+            "fly_phase": float(cfg.get("fly_phase", 0.0)),
+            "base_y": base_y,
+        })
+    else:
+        monster["vel_y"] = float(cfg.get("vel_y", 0.0))
+
+    if template_id is not None:
+        monster["template_id"] = template_id
+
+    return monster
+
+
+def instantiate_level_enemies():
+    global monsters, current_monster_cap, monster_spawn_timer
+    if level_enemy_configs:
+        monsters = []
+        for idx, cfg in enumerate(level_enemy_configs):
+            monsters.append(create_monster_from_config(cfg, template_id=idx))
+        current_monster_cap = len(level_enemy_configs)
+    else:
+        monsters = [spawn_monster() for _ in range(MAX_MONSTERS)]
+        current_monster_cap = MAX_MONSTERS
+    monster_spawn_timer = 0.0
 
 # === Multi-niveaux: chargement levels.json et application d'un niveau ===
 def _default_level():
     return {
         "name": "Niveau 1",
-        "ground": {"y": 680, "start_x": 0, "end_x": 3000},
-        "spawn": {"x": SCREEN_WIDTH / 2, "y": 680 - (head_radius + body_height + leg_height)},
-        "goal": {"x": 2300, "y": -30, "w": 70, "h": 110},
-        "platforms": [
-            {"x": 100, "y": 560, "w": 200, "h": 20},
-            {"x": 380, "y": 480, "w": 180, "h": 20},
-            {"x": 620, "y": 420, "w": 160, "h": 20},
-            {"x": 860, "y": 360, "w": 140, "h": 20},
-            {"x": 1060, "y": 300, "w": 180, "h": 20},
-            {"x": 1300, "y": 200, "w": 250, "h": 20},
-            {"x": 1600, "y": 600, "w": 100, "h": 20},
-            {"x": 1750, "y": 500, "w": 100, "h": 20},
-            {"x": 1600, "y": 400, "w": 100, "h": 20},
-            {"x": 1750, "y": 300, "w": 100, "h": 20},
-            {"x": 1600, "y": 200, "w": 100, "h": 20},
-            {"x": 1750, "y": 100, "w": 100, "h": 20},
-            {"x": 1900, "y": 60, "w": 500, "h": 20},
-        ],
+        "ground": {"y": 0, "start_x": 0, "end_x": 10000},
+        "spawn": {"x": 40, "y": -40},
+        "goal": {"x": 1000, "y": -110, "w": 70, "h": 110},
+        "platforms": [],
     }
 
 levels = []
-levels_path = os.path.join(os.path.dirname(__file__), "levels.json")
-try:
-    if os.path.isfile(levels_path):
-        with open(levels_path, "r", encoding="utf-8") as f:
+levels_dir = os.path.dirname(__file__)
+level_filenames = ["level.json", "levels.json"]  # support ancien et nouveau nommage
+for name in level_filenames:
+    level_path = os.path.join(levels_dir, name)
+    if not os.path.isfile(level_path):
+        continue
+    try:
+        with open(level_path, "r", encoding="utf-8") as f:
             data = json.load(f)
             if isinstance(data, dict) and isinstance(data.get("levels"), list) and data["levels"]:
                 levels = data["levels"]
-except Exception:
-    levels = []
+                break
+    except Exception:
+        continue
 
 if not levels:
     levels = [_default_level()]
@@ -263,7 +420,7 @@ goal_rect = pygame.Rect(0, 0, 0, 0)
 spawn_point = pygame.Vector2(0, 0)
 
 def apply_level(level):
-    global GROUND_Y, GROUND_START_X, GROUND_END_X, platforms, goal_rect, spawn_point
+    global GROUND_Y, GROUND_START_X, GROUND_END_X, platforms, goal_rect, spawn_point, level_enemy_configs
     # Sol
     GROUND_Y = int(level.get("ground", {}).get("y", GROUND_Y))
     GROUND_START_X = int(level.get("ground", {}).get("start_x", GROUND_START_X))
@@ -282,9 +439,17 @@ def apply_level(level):
     # Spawn
     s = level.get("spawn", {})
     spawn_point.update(float(s.get("x", SCREEN_WIDTH / 2)), float(s.get("y", GROUND_Y - (head_radius + body_height + leg_height))))
+    # Ennemis
+    level_enemy_configs = []
+    raw_enemies = level.get("enemies", [])
+    if isinstance(raw_enemies, list):
+        for entry in raw_enemies:
+            if isinstance(entry, dict):
+                level_enemy_configs.append(deepcopy(entry))
 
 # Appliquer le niveau initial
 apply_level(levels[selected_level_idx])
+instantiate_level_enemies()
 init_clouds()
 
 # === Score, Vies, Victoire ===
@@ -338,10 +503,10 @@ while running:
                     victory = False
                     # Appliquer le niveau sélectionné au démarrage
                     apply_level(levels[selected_level_idx])
+                    instantiate_level_enemies()
                     player_pos = spawn_point.copy()
                     player_vel_y = 0
                     camera_offset = pygame.Vector2(0, 0)
-                    monsters = [spawn_monster() for _ in range(MAX_MONSTERS)]
                     projectiles = []
                     particles = []
                     monster_spawn_timer = 0.0
@@ -401,10 +566,10 @@ while running:
                 victory = False
                 # Appliquer le niveau sélectionné au démarrage
                 apply_level(levels[selected_level_idx])
+                instantiate_level_enemies()
                 player_pos = spawn_point.copy()
                 player_vel_y = 0
                 camera_offset = pygame.Vector2(0, 0)
-                monsters = [spawn_monster() for _ in range(MAX_MONSTERS)]
                 projectiles = []
                 particles = []
                 monster_spawn_timer = 0.0
@@ -653,9 +818,24 @@ while running:
 
     # Spawn avec cooldown
     monster_spawn_timer -= dt
-    if monster_spawn_timer <= 0 and len(monsters) < MAX_MONSTERS:
-        monsters.append(spawn_monster())
-        monster_spawn_timer = MONSTER_SPAWN_COOLDOWN
+    if monster_spawn_timer <= 0:
+        spawned = False
+        if level_enemy_configs:
+            active_ids = {m.get("template_id") for m in monsters if m.get("template_id") is not None}
+            next_id = None
+            for idx in range(len(level_enemy_configs)):
+                if idx not in active_ids:
+                    next_id = idx
+                    break
+            if next_id is not None:
+                monsters.append(create_monster_from_config(level_enemy_configs[next_id], template_id=next_id))
+                spawned = True
+        else:
+            if len(monsters) < MAX_MONSTERS:
+                monsters.append(spawn_monster())
+                spawned = True
+        if spawned:
+            monster_spawn_timer = MONSTER_SPAWN_COOLDOWN
 
     # Monstres (mouvement, gravité/vol et flash)
     for monster in monsters:
