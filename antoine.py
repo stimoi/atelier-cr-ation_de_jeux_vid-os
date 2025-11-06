@@ -1,3 +1,57 @@
+def draw_tutorial_overlay():
+    global tutorial_button_rect
+    if not tutorial_visible or not current_tutorial_texts:
+        tutorial_button_rect = None
+        return
+
+    panel_margin_x = 50
+    panel_margin_y = 30
+    panel_width = SCREEN_WIDTH - panel_margin_x * 2
+    panel_height = 200
+    panel_x = panel_margin_x
+    panel_y = SCREEN_HEIGHT - panel_height - panel_margin_y
+    panel_rect = pygame.Rect(panel_x, panel_y, panel_width, panel_height)
+
+    tutorial_button_rect = panel_rect.copy()
+
+    panel_surface = pygame.Surface((panel_rect.width, panel_rect.height), pygame.SRCALPHA)
+    panel_surface.fill((12, 23, 42, 220))
+    pygame.draw.rect(panel_surface, (56, 130, 203, 220), panel_surface.get_rect(), 3, border_radius=18)
+
+    content_padding = 24
+    text_area_width = panel_rect.width - content_padding * 2
+    image_surface = _get_tutorial_image(220, panel_height - content_padding * 2)
+    image_width = image_surface.get_width() if image_surface else 0
+    if image_surface:
+        text_area_width -= image_width + 24
+
+    current_text = current_tutorial_texts[min(tutorial_index, len(current_tutorial_texts) - 1)]
+    wrapped_lines = _wrap_text_lines(current_text, small_font, text_area_width)
+
+    text_x = content_padding
+    text_y = content_padding
+    text_color = (235, 245, 255)
+    for line in wrapped_lines:
+        line_surf = small_font.render(line, True, text_color)
+        panel_surface.blit(line_surf, (text_x, text_y))
+        text_y += line_surf.get_height() + 6
+
+    progress_text = f"{tutorial_index + 1}/{len(current_tutorial_texts)}"
+    progress_surf = small_font.render(progress_text, True, (180, 210, 255))
+    panel_surface.blit(progress_surf, (text_x, panel_rect.height - content_padding - progress_surf.get_height()))
+
+    hint_text = "Cliquez pour continuer"
+    hint_surf = small_font.render(hint_text, True, (120, 180, 255))
+    hint_pos_x = panel_rect.width - content_padding - hint_surf.get_width() - (image_width + 24 if image_surface else 0)
+    panel_surface.blit(hint_surf, (max(text_x, hint_pos_x), panel_rect.height - content_padding - hint_surf.get_height()))
+
+    if image_surface:
+        img_x = panel_rect.width - content_padding - image_surface.get_width()
+        img_y = (panel_rect.height - image_surface.get_height()) // 2
+        panel_surface.blit(image_surface, (img_x, img_y))
+
+    screen.blit(panel_surface, panel_rect.topleft)
+
 import pygame
 import random
 import math
@@ -20,6 +74,47 @@ tutorial_visible = False
 tutorial_index = 0
 tutorial_button_rect = None
 tutorial_image = None
+tutorial_image_cache = {}
+
+def _wrap_text_lines(text, font, max_width):
+    lines = []
+    if not text:
+        return lines
+    for raw_paragraph in text.split("\n"):
+        paragraph = raw_paragraph.strip()
+        if not paragraph:
+            lines.append("")
+            continue
+        words = paragraph.split()
+        current = words[0]
+        for word in words[1:]:
+            potential = f"{current} {word}"
+            if font.size(potential)[0] <= max_width:
+                current = potential
+            else:
+                lines.append(current)
+                current = word
+        lines.append(current)
+    return lines
+
+def _get_tutorial_image(max_width, max_height):
+    if tutorial_image is None:
+        return None
+    key = (max_width, max_height)
+    cached = tutorial_image_cache.get(key)
+    if cached:
+        return cached
+    src_w, src_h = tutorial_image.get_size()
+    if src_w == 0 or src_h == 0:
+        tutorial_image_cache[key] = tutorial_image
+        return tutorial_image
+    scale = min(max_width / src_w, max_height / src_h)
+    scale = max(scale, 0.01)
+    new_size = (max(1, int(src_w * scale)), max(1, int(src_h * scale)))
+    scaled = pygame.transform.smoothscale(tutorial_image, new_size)
+    tutorial_image_cache[key] = scaled
+    return scaled
+
 
 def _normalize_key(value):
     return "".join(ch for ch in str(value).lower() if ch.isalnum())
@@ -98,6 +193,54 @@ def load_tutorial_image():
 
 tutorial_texts = load_tutorial_texts()
 tutorial_image = load_tutorial_image()
+
+
+def select_tutorial_for_level(level):
+    global current_tutorial_texts, tutorial_visible, tutorial_index
+    if not level:
+        current_tutorial_texts = []
+        tutorial_visible = False
+        tutorial_index = 0
+        return
+    key = _normalize_key(level.get("name", ""))
+    entries = tutorial_texts.get(key)
+    if not entries:
+        fallback_key = _normalize_key("niveau1")
+        entries = tutorial_texts.get(fallback_key, [])
+    current_tutorial_texts = list(entries)
+    tutorial_index = 0
+    tutorial_visible = False
+
+
+def start_tutorial_display():
+    global tutorial_visible, tutorial_index
+    if current_tutorial_texts:
+        tutorial_index = 0
+        tutorial_visible = True
+    else:
+        tutorial_visible = False
+
+
+def hide_tutorial_display():
+    global tutorial_visible
+    tutorial_visible = False
+
+
+def toggle_tutorial_visibility():
+    global tutorial_visible
+    if current_tutorial_texts:
+        tutorial_visible = not tutorial_visible
+
+
+def advance_tutorial_text():
+    global tutorial_visible, tutorial_index
+    if not tutorial_visible or not current_tutorial_texts:
+        return
+    tutorial_index += 1
+    if tutorial_index >= len(current_tutorial_texts):
+        tutorial_visible = False
+        tutorial_index = len(current_tutorial_texts) - 1
+    tutorial_index = max(0, tutorial_index)
 
 # === Constantes ===
 SCREEN_WIDTH, SCREEN_HEIGHT = screen.get_size()
@@ -446,6 +589,7 @@ def apply_level(level):
         for entry in raw_enemies:
             if isinstance(entry, dict):
                 level_enemy_configs.append(deepcopy(entry))
+    select_tutorial_for_level(level)
 
 # Appliquer le niveau initial
 apply_level(levels[selected_level_idx])
@@ -493,6 +637,9 @@ while running:
             # Easter egg: gros texte à l'écran
             fword_timer = 1.5
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if tutorial_visible and tutorial_button_rect and tutorial_button_rect.collidepoint(event.pos):
+                advance_tutorial_text()
+                continue
             if game_state == "MENU":
                 if play_rect.collidepoint(event.pos):
                     # Reset et démarrage du jeu
@@ -506,7 +653,6 @@ while running:
                     instantiate_level_enemies()
                     player_pos = spawn_point.copy()
                     player_vel_y = 0
-                    camera_offset = pygame.Vector2(0, 0)
                     projectiles = []
                     particles = []
                     monster_spawn_timer = 0.0
@@ -519,13 +665,16 @@ while running:
                     dash_timer = 0.0
                     dash_direction = 1
                     game_state = "PLAYING"
+                    start_tutorial_display()
                 elif quit_rect.collidepoint(event.pos):
                     running = False
             elif game_state == "PAUSED":
                 if pause_resume_rect.collidepoint(event.pos):
                     game_state = "PLAYING"
+                    start_tutorial_display()
                 elif pause_menu_rect.collidepoint(event.pos):
                     game_state = "MENU"
+                    hide_tutorial_display()
                 elif pause_quit_rect.collidepoint(event.pos):
                     running = False
             elif game_state == "PLAYING":
@@ -569,19 +718,18 @@ while running:
                 instantiate_level_enemies()
                 player_pos = spawn_point.copy()
                 player_vel_y = 0
-                camera_offset = pygame.Vector2(0, 0)
+                game_state = "PLAYING"
                 projectiles = []
                 particles = []
                 monster_spawn_timer = 0.0
                 stamina = STAMINA_MAX
                 stamina_idle_timer = 0.0
-                stamina_regen_timer = 0.0
-                air_jumps_left = 1
                 jump_was_pressed = False
                 dash_was_pressed = False
                 dash_timer = 0.0
                 dash_direction = 1
                 game_state = "PLAYING"
+                start_tutorial_display()
             elif game_state == "MENU" and event.key in (pygame.K_LEFT, pygame.K_RIGHT):
                 # Changer de niveau sélectionné dans le menu
                 if event.key == pygame.K_LEFT:
@@ -1189,6 +1337,7 @@ while running:
         projectiles = []
         particles = []
 
+    draw_tutorial_overlay()
     pygame.display.flip()
     dt = clock.tick(FPS) / 1000
 
