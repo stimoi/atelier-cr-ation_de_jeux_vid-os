@@ -6,12 +6,66 @@ Un projet collaboratif d'apprentissage et de création
 
 Propulsé par Pygame 🐍 | Créé avec passion ❤️
 
-la description du jeu :
+🎮 Présentation du jeu
+🚀 Plongez dans un univers où chaque saut peut être votre dernier
 
-Notre jeu est un jeu inspiré de Level Devil et Super Mario Bros, un jeu de plateformes en deux dimensions truffé de pièges modélisé sous la forme de multiples puzzles. Le héros doit finir le monde pour obtenir une récompense faramineuse. Ce monde est gouverné par un robot qui veut le cybernétiser. Le jeu sera construit avec le module Pygame en Python, aura un style futuriste avec des couleurs sombres et bleutées et contiendra des mélodies aux ondes carrés et triangulaires.
+Notre jeu s’inspire de Level Devil et Super Mario Bros, mais repousse les limites du genre.
+C’est un plateformer 2D plein de pièges ingénieux 🧩 et de puzzles retors, où chaque niveau mettra vos réflexes et votre logique à l’épreuve.
 
-Le joueur peut choisir ses sexe, métier et habits. Les mécaniques sont: Saut et Déplacement (pouvant recevoir une propulsion ou "dash"), Coup de poing, Course, Double saut, Inventaire (plus grand au fil du temps), Retour en arrière, Escalade, Balayette, Eau (plus dangereuse au fil de la progression), Plateforme (pouvant se déplacer et tourner), Gravité (changeant de sens, direction ou intensité), Téléport. Le but est de mettre le joueur le plus possible au défi, de lui faire découvrir une histoire sans précédent et de le métamorphoser à travers un univers de science-fiction.
+Vous incarnez un héros lancé dans une quête périlleuse : terminer un monde dominé par un robot 🤖 bien décidé à cybernétiser toute forme de vie.
+À la clé ? Une récompense colossale 💎… si vous survivez jusque-là.
 
-Les différents niveaux seront regroupés par territoire, chacun contenant un Processeur permettant d'obtenir une nouvelle capacité. Il y a le monde terminal, entièrement robotisé et digitalisé avec des possibilités infinies (à voir).
+🧠 Ambiance & Univers
 
-Il y a 3 étapes principales à respecter: tout d'abord, créer les différents graphiques du jeu, ayant pour critères la compatibilité et le style choisi; par la suite, construire les mécaniques de la plus simple à la plus complexe, avec des fichiers de stockage pour la progression et des optimisations à atteindre pour ajouter du confort au jeu; finalement, enregistrer les mélodies en gardant les conditions préposées en tête.
+Le jeu est développé avec Pygame (Python) 🐍 et plonge le joueur dans une atmosphère futuriste aux couleurs sombres et bleutées 🌌, accompagnée de mélodies électroniques 🎵 basées sur des ondes carrées et triangulaires.
+
+Avant de plonger dans l’action, créez votre personnage :
+👤 Sexe
+🧰 Métier
+👕 Style vestimentaire
+
+⚙️ Mécaniques de jeu
+
+Maîtrisez une large panoplie d’actions pour triompher :
+
+🌀 Saut, Double saut, Dash et Course nerveuse
+
+✊ Coup de poing, Balayette, Escalade
+
+🧳 Inventaire évolutif (qui s’agrandit au fil du temps)
+
+⏪ Retour en arrière
+
+🌊 Eau (de plus en plus dangereuse)
+
+⚙️ Plateformes mouvantes et rotatives
+
+🪐 Gravité changeante (direction, sens, intensité)
+
+🛰️ Téléportation
+
+Le but : défier le joueur au maximum, révéler une histoire unique, et le transformer à travers un univers de science-fiction captivant.
+
+🌍 Progression
+
+Les niveaux sont regroupés en territoires.
+Chacun contient un Processeur 🧩, permettant de débloquer une nouvelle capacité spéciale.
+
+Au terme du voyage, vous atteindrez le monde terminal 💀 — un univers entièrement robotisé et digitalisé, offrant des possibilités infinies.
+
+🛠️ Étapes de développement
+
+🎨 Créer les graphismes — compatibles avec le style choisi.
+
+🧩 Programmer les mécaniques — des plus simples aux plus complexes, avec fichiers de sauvegarde et optimisations.
+
+🎧 Composer les mélodies — dans un style futuriste fidèle à l’identité du jeu.
+
+🌟 En résumé
+
+💥 Un jeu de plateformes 2D exigeant et inventif
+🧠 Un univers futuriste plein de mystères
+🎶 Une ambiance sonore rétro-futuriste
+🔥 Un défi total qui mettra vos nerfs et votre créativité à l’épreuve
+
+⚡ Préparez-vous à plonger dans un monde où chaque erreur se paie… mais chaque victoire vous rend plus fort.
