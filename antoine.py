@@ -604,6 +604,13 @@ invuln_timer = 0.0
 is_invulnerable = False
 victory = False
 
+LEVEL_TRANSITION_FADE_OUT = 0.6
+LEVEL_TRANSITION_FADE_IN = 0.6
+level_transition_active = False
+level_transition_phase = "fade_out"
+level_transition_timer = 0.0
+level_transition_next_idx = None
+
 # === Etat du jeu ===
 game_state = "MENU"  # MENU, PLAYING, PAUSED
 fword_timer = 0.0
@@ -648,6 +655,10 @@ while running:
                     invuln_timer = 0.0
                     is_invulnerable = False
                     victory = False
+                    level_transition_active = False
+                    level_transition_phase = "fade_out"
+                    level_transition_timer = 0.0
+                    level_transition_next_idx = None
                     # Appliquer le niveau sélectionné au démarrage
                     apply_level(levels[selected_level_idx])
                     instantiate_level_enemies()
@@ -713,6 +724,10 @@ while running:
                 invuln_timer = 0.0
                 is_invulnerable = False
                 victory = False
+                level_transition_active = False
+                level_transition_phase = "fade_out"
+                level_transition_timer = 0.0
+                level_transition_next_idx = None
                 # Appliquer le niveau sélectionné au démarrage
                 apply_level(levels[selected_level_idx])
                 instantiate_level_enemies()
@@ -1053,9 +1068,17 @@ while running:
             particles.remove(part)
 
     # Victoire
-    if not victory and pygame.Rect(int(player_pos.x - head_radius), int(player_pos.y - head_radius), 
-                                   head_radius*2, head_radius*2).colliderect(goal_rect):
-        victory = True
+    if (not victory and not level_transition_active and
+        pygame.Rect(int(player_pos.x - head_radius), int(player_pos.y - head_radius),
+                    head_radius*2, head_radius*2).colliderect(goal_rect)):
+        hide_tutorial_display()
+        if selected_level_idx < len(levels) - 1:
+            level_transition_active = True
+            level_transition_phase = "fade_out"
+            level_transition_timer = 0.0
+            level_transition_next_idx = selected_level_idx + 1
+        else:
+            victory = True
 
     # --- DESSIN ---
 
@@ -1298,6 +1321,57 @@ while running:
                                          True, (200, 200, 200))
         screen.blit(cooldown_text, (SCREEN_WIDTH - 350, 30))
 
+    if level_transition_active:
+        level_transition_timer += dt
+        overlay_alpha = 0
+        if level_transition_phase == "fade_out":
+            if LEVEL_TRANSITION_FADE_OUT > 0:
+                overlay_alpha = min(255, int((level_transition_timer / LEVEL_TRANSITION_FADE_OUT) * 255))
+            else:
+                overlay_alpha = 255
+            if level_transition_timer >= LEVEL_TRANSITION_FADE_OUT:
+                selected_level_idx = level_transition_next_idx
+                apply_level(levels[selected_level_idx])
+                instantiate_level_enemies()
+                player_pos = spawn_point.copy()
+                player_vel_y = 0
+                projectiles = []
+                particles = []
+                monster_spawn_timer = 0.0
+                stamina = STAMINA_MAX
+                stamina_idle_timer = 0.0
+                stamina_regen_timer = 0.0
+                air_jumps_left = 1
+                jump_was_pressed = False
+                dash_was_pressed = False
+                dash_timer = 0.0
+                dash_direction = 1
+                shoot_recoil = 0.0
+                prev_on_ground = True
+                is_invulnerable = False
+                invuln_timer = 0.0
+                camera_offset.x = player_pos.x - SCREEN_WIDTH // 2
+                camera_offset.y = player_pos.y - SCREEN_HEIGHT // 2
+                start_tutorial_display()
+                level_transition_phase = "fade_in"
+                level_transition_timer = 0.0
+                overlay_alpha = 255
+        else:
+            if LEVEL_TRANSITION_FADE_IN > 0:
+                overlay_alpha = max(0, 255 - int((level_transition_timer / LEVEL_TRANSITION_FADE_IN) * 255))
+            else:
+                overlay_alpha = 0
+            if level_transition_timer >= LEVEL_TRANSITION_FADE_IN:
+                level_transition_active = False
+                level_transition_next_idx = None
+                level_transition_phase = "fade_out"
+                level_transition_timer = 0.0
+                overlay_alpha = 0
+        if overlay_alpha > 0:
+            overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, overlay_alpha))
+            screen.blit(overlay, (0, 0))
+
     # Messages de fin
     if victory:
         overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
@@ -1316,6 +1390,10 @@ while running:
         # Retour au menu
         game_state = "MENU"
         victory = False
+        level_transition_active = False
+        level_transition_next_idx = None
+        level_transition_phase = "fade_out"
+        level_transition_timer = 0.0
 
     if lives <= 0:
         overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
@@ -1336,6 +1414,10 @@ while running:
         score = 0
         projectiles = []
         particles = []
+        level_transition_active = False
+        level_transition_next_idx = None
+        level_transition_phase = "fade_out"
+        level_transition_timer = 0.0
 
     draw_tutorial_overlay()
     pygame.display.flip()
