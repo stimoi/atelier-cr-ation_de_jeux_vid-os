@@ -1,6 +1,6 @@
-Notre jeu est un jeu inspiré de Level Devil et Super Mario Bros, un jeu de plateformes en deux dimensions truffé de pièges modélisé sous 
-la forme de multiples puzzles. Le héros doit finir le monde pour obtenir une récompense faramineuse. Ce monde est gouverné par un robot 
-qui veut le cybernétiser. Le jeu sera construit avec le module Pygame en Python, aura un style futuriste avec des couleurs sombres et 
+Notre jeu est un jeu platformer en deux dimensions truffé de pièges modélisé sous la forme de multiples puzzles. Le héros doit 
+finir le monde pour obtenir une récompense faramineuse. Ce monde est gouverné par un robot qui veut le cybernétiser. 
+Le jeu sera construit avec le module Pygame en Python, aura un style futuriste avec des couleurs sombres et 
 bleutées et contiendra des mélodies aux ondes carrés et triangulaires.
 
 Le joueur peut choisir ses sexe, métier et habits. Les mécaniques sont: Saut et Déplacement (pouvant recevoir une propulsion ou "dash"), 
