@@ -67,5 +67,6 @@ QUI FAIT QUOI ?
 • Créer des niveaux complets
 • Préparer le sound design du jeu : choisir les effets sonores, musiques
 • Ajouter la lecture des sons aux fonctions (exemple : dash, coup de poing, saut...)
-• 
+• Pendant qu'on développe les déplacements et les actions, on peut créer un ou plusieurs vrais niveaux
+
 
