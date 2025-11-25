@@ -43,6 +43,14 @@ avec des fichiers de stockage pour la
 progression et des optimisations à atteindre pour ajouter du confort au jeu; finalement, enregistrer les mélodies en gardant les 
 conditions préposées en tête.
 
+GAMEPLAY
+--------
+/!\ Réfléchissez à la mécanique du jeu et écrivez vos réflexions, afin que je puisse vous donner mon avis.
+- Barre de vie ? Comment fonctionne-t-elle ? Comment se remplit-elle ? Comment perd-on de la vie ? Que se passe-t-il quand on n'a plus de vie ?...
+- Sauts : on a dit qu'on ne pouvait pas passer à travers les plate-formes par le dessous, sauf certaines. Comment les reconnaît-on ?
+- Touches : quelles sont les touches utilisées et pour quelles fonctions ?
+
+
 QUI FAIT QUOI ?
 ---------------
 • Créer un niveau basique
