@@ -25,7 +25,8 @@ Le joueur peut choisir ses sexe, métier et habits. Les mécaniques sont: Saut e
 Coup de poing, Course, Double saut, Inventaire (plus grand au fil du temps), Retour en arrière, Escalade, Balayette, 
 Eau (plusdangereuse 
 au fil de la progression), Plateforme (pouvant se déplacer et tourner), Gravité (changeant de sens, direction ou intensité), 
-Téléport. Le but est de mettre le joueur le plus possible au défi, de lui faire découvrir une histoire sans précédent et de le métamorphoser à travers un univers de science-fiction.
+Téléport. Le but est de mettre le joueur le plus possible au défi, de lui faire découvrir une histoire sans précédent et de le
+métamorphoser à travers un univers de science-fiction.
 
 Les différents niveaux seront regroupés par territoire, chacun contenant un Processeur permettant d'obtenir une nouvelle 
 capacité. Il y a le monde terminal, entièrement robotisé et digitalisé avec des possibilités infinies (à voir).
