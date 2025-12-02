@@ -1158,7 +1158,6 @@ while running:
         except pygame.error as e:
             print(f"Impossible de charger l'image : {e}")
             pygame.quit()
-            sys.exit()
 
         # Définir les coordonnées de départ pour l'image
         # Nous centrons l'image ici à titre d'exemple
@@ -1213,7 +1212,6 @@ while running:
             except pygame.error as e:
                 print(f"Impossible de charger l'image : {e}")
                 pygame.quit()
-                sys.exit()
 
             image_rect = pygame.Rect(monster_screen[0]-image.get_width(), monster_screen[1]-image.get_height(), 40, 40)
             image = pygame.transform.scale(image, (image.get_width()*2, image.get_height()*2))
