@@ -619,8 +619,10 @@ fword_timer = 0.0
 # === Boucle principale ===
 running = True
 dt = 0
+cnt = 0
 
 while running:
+    cnt = (cnt+1)%4
     # Boutons du menu (recalculés à chaque frame pour simplicité)
     play_rect = pygame.Rect(SCREEN_WIDTH//2 - 150, SCREEN_HEIGHT//2 + 40, 300, 70)
     quit_rect = pygame.Rect(SCREEN_WIDTH//2 - 150, SCREEN_HEIGHT//2 + 130, 300, 70)
@@ -830,7 +832,7 @@ while running:
     # --- LOGIQUE DU JEU ---
 
     # Mouvements
-    stamina_idle_timer = 0.0+dt
+    stamina_idle_timer += dt
     keys = pygame.key.get_pressed()
     moving = False
     if keys[pygame.K_q] or keys[pygame.K_LEFT]:
@@ -1138,10 +1140,21 @@ while running:
     render_center = (p_center_screen[0], p_center_screen[1] + int(bob))
 
     if not is_invulnerable or int(invuln_timer * 10) % 2 == 0:
+        if moving:
+            movement = ''
+            if cnt == 0:
+                movement = 'perso.png'
+            elif cnt == 1:
+                movement = 'perso2.png'
+            elif cnt == 2:
+                movement = 'perso4.png'
+            elif cnt == 3:
+                movement = 'perso3.png'
+        else:
+            movement = 'perso.png'
+        # Chargement de l'image
         try:
-            # 3. Chargement de l'image
-            # La méthode .convert_alpha() est utilisée pour optimiser l'image pour Pygame
-            image = pygame.image.load('perso.png').convert_alpha()
+            image = pygame.image.load(movement).convert_alpha()
         except pygame.error as e:
             print(f"Impossible de charger l'image : {e}")
             pygame.quit()
@@ -1156,8 +1169,7 @@ while running:
             if event.type == pygame.QUIT:
                 running = False
 
-        # b) Dessiner l'image (Blitting)
-        # screen.blit(source, destination) copie la surface 'image' sur la surface 'screen'
+        # Dessiner l'image
         screen.blit(image, image_rect)
 
     # Monstres (types: tank, fast, flyer)
