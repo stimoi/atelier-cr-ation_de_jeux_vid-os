@@ -1162,12 +1162,8 @@ while running:
 
         # Définir les coordonnées de départ pour l'image
         # Nous centrons l'image ici à titre d'exemple
-        image_rect = pygame.Rect(render_center[0], render_center[1], 40, 40)
+        image_rect = pygame.Rect(p_center_screen[0]+image.get_width(), p_center_screen[1]+image.get_height(), 40, 40)
         image = pygame.transform.scale(image, (image.get_width()*2, image.get_height()*2))
-
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
 
         # Dessiner l'image
         screen.blit(image, image_rect)
@@ -1212,20 +1208,18 @@ while running:
             # Traînée légère
             pygame.draw.circle(screen, (255, 200, 120), (monster_screen[0] - monster["dir"]*r, monster_screen[1]), max(1, r//4))
         else:  # flyer
-            # Corps volant avec ailes
-            pygame.draw.circle(screen, monster_color, monster_screen, r)
-            pygame.draw.circle(screen, (0, 0, 0), monster_screen, r, 3)
-            wing_span = r + 10
-            left_wing = [(monster_screen[0] - 2, monster_screen[1]),
-                         (monster_screen[0] - wing_span, monster_screen[1] - 6),
-                         (monster_screen[0] - wing_span + 6, monster_screen[1] + 6)]
-            right_wing = [(monster_screen[0] + 2, monster_screen[1]),
-                          (monster_screen[0] + wing_span, monster_screen[1] - 6),
-                          (monster_screen[0] + wing_span - 6, monster_screen[1] + 6)]
-            pygame.draw.polygon(screen, (180, 210, 255), left_wing)
-            pygame.draw.polygon(screen, (180, 210, 255), right_wing)
-            pygame.draw.polygon(screen, (0, 0, 0), left_wing, 2)
-            pygame.draw.polygon(screen, (0, 0, 0), right_wing, 2)
+            try:
+                image = pygame.image.load('monster.png').convert_alpha()
+            except pygame.error as e:
+                print(f"Impossible de charger l'image : {e}")
+                pygame.quit()
+                sys.exit()
+
+            image_rect = pygame.Rect(monster_screen[0]-image.get_width(), monster_screen[1]-image.get_height(), 40, 40)
+            image = pygame.transform.scale(image, (image.get_width()*2, image.get_height()*2))
+
+            # Dessiner l'image
+            screen.blit(image, image_rect)
 
     # Particules
     for part in particles:
